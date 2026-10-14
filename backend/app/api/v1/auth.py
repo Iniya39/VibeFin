@@ -72,9 +72,9 @@ def signup(req: SignUpRequest):
             VALUES (?, 'moderate', 'medium_term', 'dark', ?)
         """, (user_id, now_iso))
 
-        # Default paper trading account with ₹10,00,000 virtual balance
+        # Paper trading account initialized with ₹0 balance (users deposit virtual funds)
         account_id = str(uuid.uuid4())
-        initial_balance = settings.DEFAULT_STARTING_BALANCE
+        initial_balance = 0.0
         cursor.execute("""
             INSERT INTO paper_trading_accounts (id, user_id, virtual_balance, currency, created_at, updated_at)
             VALUES (?, ?, ?, 'INR', ?, ?)
@@ -84,8 +84,8 @@ def signup(req: SignUpRequest):
         ledger_id = str(uuid.uuid4())
         cursor.execute("""
             INSERT INTO simulated_cash_ledger (id, account_id, type, amount, balance_after, description, created_at)
-            VALUES (?, ?, 'INITIAL_DEPOSIT', ?, ?, 'Initial simulated trading deposit', ?)
-        """, (ledger_id, account_id, initial_balance, initial_balance, now_iso))
+            VALUES (?, ?, 'ACCOUNT_OPENED', 0.0, 0.0, 'Trading account activated. Add virtual funds to begin investing.', ?)
+        """, (ledger_id, account_id, now_iso))
 
         # Default watchlist with top 5 bellwether stocks
         watchlist_id = str(uuid.uuid4())

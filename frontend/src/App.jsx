@@ -10,16 +10,23 @@ import PortfolioView from './views/PortfolioView';
 import OrdersView from './views/OrdersView';
 import TransactionsView from './views/TransactionsView';
 import AIInsightsView from './views/AIInsightsView';
+import TradingBehaviorView from './views/TradingBehaviorView';
+import LoginPage from './views/LoginPage';
 import StockDetailModal from './components/StockDetailModal';
 import OrderModal from './components/OrderModal';
+import AddFundsModal from './components/AddFundsModal';
 import { ShieldAlert } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showLoginView, setShowLoginView] = useState(false);
+  const [showAddFundsModal, setShowAddFundsModal] = useState(false);
+
   const [allStocks, setAllStocks] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [marketIndices, setMarketIndices] = useState([]);
-  const [virtualBalance, setVirtualBalance] = useState(1000000.0);
+  const [virtualBalance, setVirtualBalance] = useState(0.0);
   const [userWatchlists, setUserWatchlists] = useState([]);
 
   // Modals state
@@ -27,35 +34,57 @@ export default function App() {
   const [orderModalData, setOrderModalData] = useState(null); // { stock, side }
   const [loadingInitial, setLoadingInitial] = useState(true);
 
-  // Initialize App with seamless instant demo-session
+  // Initialize App: Check existing authentication or open login
   useEffect(() => {
     let isMounted = true;
 
     async function initApp() {
       try {
-        // Auto-login to demo account if token missing
-        if (!api.token) {
-          await api.auth.demoLogin();
-        }
-
-        // Fetch parallel initial state
-        const [stocksRes, secRes, accRes, wlRes, idxRes] = await Promise.all([
-          api.stocks.list(),
-          api.stocks.sectors(),
-          api.trading.account(),
-          api.watchlists.list(),
-          api.market.indices(),
+        // Parallel fetch universe & market data
+        const [stocksRes, secRes, idxRes] = await Promise.all([
+          api.stocks.list().catch(() => ({ stocks: [] })),
+          api.stocks.sectors().catch(() => ({ sectors: [] })),
+          api.market.indices().catch(() => ({ indices: [] })),
         ]);
 
-        if (!isMounted) return;
-
-        setAllStocks(stocksRes.stocks || []);
-        setSectors(secRes.sectors || []);
-        if (accRes?.account?.virtual_balance !== undefined) {
-          setVirtualBalance(accRes.account.virtual_balance);
+        if (isMounted) {
+          setAllStocks(stocksRes.stocks || []);
+          setSectors(secRes.sectors || []);
+          setMarketIndices(idxRes.indices || []);
         }
-        setUserWatchlists(wlRes.watchlists || []);
-        setMarketIndices(idxRes.indices || []);
+
+        // Check if user has an active session
+        if (api.token) {
+          try {
+            const userRes = await api.users.getMe();
+            if (userRes?.user && isMounted) {
+              setCurrentUser(userRes.user);
+              // Fetch user-specific account & watchlists
+              const [accRes, wlRes] = await Promise.all([
+                api.trading.account().catch(() => null),
+                api.watchlists.list().catch(() => null),
+              ]);
+              if (accRes?.account?.virtual_balance !== undefined && isMounted) {
+                setVirtualBalance(accRes.account.virtual_balance);
+              }
+              if (wlRes?.watchlists && isMounted) {
+                setUserWatchlists(wlRes.watchlists);
+              }
+            }
+          } catch (err) {
+            console.warn('Session expired or invalid token:', err);
+            api.setToken(null);
+            if (isMounted) {
+              setCurrentUser(null);
+              setShowLoginView(true);
+            }
+          }
+        } else {
+          // No token saved: show login view
+          if (isMounted) {
+            setShowLoginView(true);
+          }
+        }
       } catch (err) {
         console.error('Initialization error:', err);
       } finally {
@@ -81,6 +110,32 @@ export default function App() {
     }
   };
 
+  const refreshWatchlists = async () => {
+    try {
+      const res = await api.watchlists.list();
+      if (res?.watchlists) {
+        setUserWatchlists(res.watchlists);
+      }
+    } catch (err) {
+      console.error('Error refreshing watchlists:', err);
+    }
+  };
+
+  const handleLoginSuccess = async (user) => {
+    setCurrentUser(user);
+    setShowLoginView(false);
+    await refreshAccount();
+    await refreshWatchlists();
+  };
+
+  const handleLogout = async () => {
+    await api.auth.logout();
+    setCurrentUser(null);
+    setVirtualBalance(0.0);
+    setUserWatchlists([]);
+    setShowLoginView(true);
+  };
+
   const handleResetBalance = async () => {
     try {
       const res = await api.trading.resetAccount();
@@ -94,12 +149,15 @@ export default function App() {
   };
 
   const handleOpenOrder = (stock, side = 'BUY') => {
+    if (!currentUser) {
+      setShowLoginView(true);
+      return;
+    }
     setOrderModalData({ stock, side });
   };
 
   const handleOrderPlaced = () => {
     refreshAccount();
-    // Refresh stocks quotes
     api.stocks.list().then((res) => {
       if (res.stocks) setAllStocks(res.stocks);
     });
@@ -113,6 +171,10 @@ export default function App() {
   };
 
   const handleToggleWatchlist = async (symbol) => {
+    if (!currentUser) {
+      setShowLoginView(true);
+      return;
+    }
     if (!defaultWatchlist) return;
     const isMember = isInDefaultWatchlist(symbol);
     try {
@@ -121,12 +183,21 @@ export default function App() {
       } else {
         await api.watchlists.addStock(defaultWatchlist.id, symbol);
       }
-      const updatedWl = await api.watchlists.list();
-      setUserWatchlists(updatedWl.watchlists || []);
+      refreshWatchlists();
     } catch (err) {
       console.error('Error updating watchlist:', err);
     }
   };
+
+  // Render Login Page if user requested or session requires it
+  if (showLoginView && !currentUser) {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        onExploreGuest={() => setShowLoginView(false)}
+      />
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
@@ -135,6 +206,10 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         virtualBalance={virtualBalance}
+        currentUser={currentUser}
+        onOpenAddFunds={() => setShowAddFundsModal(true)}
+        onLogout={handleLogout}
+        onOpenLogin={() => setShowLoginView(true)}
         onResetBalance={handleResetBalance}
         onSelectStock={(sym) => setSelectedStockSymbol(sym)}
         allStocks={allStocks}
@@ -191,6 +266,7 @@ export default function App() {
                 onSelectStock={(sym) => setSelectedStockSymbol(sym)}
                 onOpenOrder={handleOpenOrder}
                 onResetBalance={handleResetBalance}
+                onOpenAddFunds={() => setShowAddFundsModal(true)}
               />
             )}
             {activeTab === 'orders' && (
@@ -204,6 +280,9 @@ export default function App() {
                 allStocks={allStocks}
                 onSelectStock={(sym) => setSelectedStockSymbol(sym)}
               />
+            )}
+            {activeTab === 'psychology' && (
+              <TradingBehaviorView onSelectStock={(sym) => setSelectedStockSymbol(sym)} />
             )}
           </>
         )}
@@ -228,8 +307,20 @@ export default function App() {
           availableCash={virtualBalance}
           onClose={() => setOrderModalData(null)}
           onOrderPlaced={handleOrderPlaced}
+          onOpenAddFunds={() => setShowAddFundsModal(true)}
         />
       )}
+
+      {/* Add Virtual Funds Modal */}
+      <AddFundsModal
+        isOpen={showAddFundsModal}
+        onClose={() => setShowAddFundsModal(false)}
+        currentBalance={virtualBalance}
+        onFundsUpdated={(newBal) => {
+          setVirtualBalance(newBal);
+          refreshAccount();
+        }}
+      />
 
       {/* Footer Disclaimer */}
       <footer style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-subtle)', padding: '16px 20px', marginTop: 'auto', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -242,7 +333,7 @@ export default function App() {
             </span>
           </div>
           <div>
-            100 Stocks • 10 Sectors • Powered by FastAPI & React
+            100 Stocks • 10 Sectors • Multi-User Paper Trading Engine
           </div>
         </div>
       </footer>

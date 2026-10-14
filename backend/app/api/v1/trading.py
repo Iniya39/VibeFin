@@ -16,6 +16,15 @@ class PlaceOrderRequest(BaseModel):
     trigger_price: Optional[float] = None
     idempotency_key: Optional[str] = None
 
+class DepositFundsRequest(BaseModel):
+    amount: float
+    method: Optional[str] = "UPI (Simulated)"
+    description: Optional[str] = None
+
+class WithdrawFundsRequest(BaseModel):
+    amount: float
+    method: Optional[str] = "Bank Transfer (Simulated)"
+
 @router.get("/account")
 def get_account(current_user: dict = Depends(get_current_user)):
     """Retrieve simulated trading account balance and parameters."""
@@ -24,6 +33,31 @@ def get_account(current_user: dict = Depends(get_current_user)):
         "account": account,
         "disclaimer": "Simulated paper trading funds only. Real money deposits and withdrawals are strictly disabled."
     }
+
+@router.post("/funds/deposit")
+def deposit_funds(req: DepositFundsRequest, current_user: dict = Depends(get_current_user)):
+    """Simulate depositing virtual funds to trading buying power."""
+    res = trading_engine.deposit_funds(
+        user_id=current_user["id"],
+        amount=req.amount,
+        method=req.method or "UPI (Simulated)",
+        description=req.description
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Deposit failed"))
+    return res
+
+@router.post("/funds/withdraw")
+def withdraw_funds(req: WithdrawFundsRequest, current_user: dict = Depends(get_current_user)):
+    """Simulate withdrawing virtual funds from trading buying power."""
+    res = trading_engine.withdraw_funds(
+        user_id=current_user["id"],
+        amount=req.amount,
+        method=req.method or "Bank Transfer (Simulated)"
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Withdrawal failed"))
+    return res
 
 @router.post("/account/reset")
 def reset_account(current_user: dict = Depends(get_current_user)):

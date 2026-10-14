@@ -383,4 +383,65 @@ class TradingEngine:
                 "message": "Simulated portfolio and cash balance successfully reset to ₹10,00,000."
             }
 
+    def deposit_funds(self, user_id: str, amount: float, method: str = "UPI (Simulated)", description: Optional[str] = None) -> Dict[str, Any]:
+        """Deposit simulated funds to increase trading buying power."""
+        if amount <= 0:
+            return {"success": False, "error": "Deposit amount must be greater than zero."}
+        
+        with get_db() as conn:
+            cursor = conn.cursor()
+            account = self.get_or_create_account(user_id)
+            account_id = account["id"]
+            current_bal = float(account["virtual_balance"] or 0.0)
+            new_balance = round(current_bal + amount, 2)
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            cursor.execute("UPDATE paper_trading_accounts SET virtual_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now_iso, account_id))
+
+            ledger_id = str(uuid.uuid4())
+            desc = description or f"Simulated funds deposit via {method}"
+            cursor.execute("""
+                INSERT INTO simulated_cash_ledger (id, account_id, type, amount, balance_after, description, created_at)
+                VALUES (?, ?, 'DEPOSIT', ?, ?, ?, ?)
+            """, (ledger_id, account_id, amount, new_balance, desc, now_iso))
+
+            return {
+                "success": True,
+                "amount": amount,
+                "virtual_balance": new_balance,
+                "message": f"Successfully added ₹{amount:,.2f} to buying power."
+            }
+
+    def withdraw_funds(self, user_id: str, amount: float, method: str = "Bank Transfer (Simulated)") -> Dict[str, Any]:
+        """Withdraw simulated funds from available buying power."""
+        if amount <= 0:
+            return {"success": False, "error": "Withdrawal amount must be greater than zero."}
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            account = self.get_or_create_account(user_id)
+            account_id = account["id"]
+            current_bal = float(account["virtual_balance"] or 0.0)
+            if current_bal < amount:
+                return {"success": False, "error": f"Insufficient funds. Available buying power: ₹{current_bal:,.2f}"}
+
+            new_balance = round(current_bal - amount, 2)
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            cursor.execute("UPDATE paper_trading_accounts SET virtual_balance = ?, updated_at = ? WHERE id = ?", (new_balance, now_iso, account_id))
+
+            ledger_id = str(uuid.uuid4())
+            desc = f"Simulated funds withdrawal to {method}"
+            cursor.execute("""
+                INSERT INTO simulated_cash_ledger (id, account_id, type, amount, balance_after, description, created_at)
+                VALUES (?, ?, 'WITHDRAWAL', ?, ?, ?, ?)
+            """, (ledger_id, account_id, -amount, new_balance, desc, now_iso))
+
+            return {
+                "success": True,
+                "amount": amount,
+                "virtual_balance": new_balance,
+                "message": f"Successfully withdrew ₹{amount:,.2f} virtual funds."
+            }
+
 trading_engine = TradingEngine()

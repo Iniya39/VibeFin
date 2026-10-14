@@ -13,7 +13,12 @@ import {
   ClipboardList,
   History,
   Activity,
-  BarChart3
+  BarChart3,
+  PlusCircle,
+  LogOut,
+  LogIn,
+  ChevronDown,
+  Brain
 } from 'lucide-react';
 
 export default function Navbar({
@@ -23,11 +28,17 @@ export default function Navbar({
   onResetBalance,
   onSelectStock,
   allStocks = [],
-  marketIndices = []
+  marketIndices = [],
+  currentUser = null,
+  onOpenAddFunds,
+  onLogout,
+  onOpenLogin
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const searchRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   // Filter stocks for quick search
   const filteredStocks = searchTerm.trim()
@@ -45,6 +56,9 @@ export default function Navbar({
       if (searchRef.current && !searchRef.current.contains(e.target)) {
         setShowSearchResults(false);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -60,6 +74,7 @@ export default function Navbar({
     { id: 'orders', label: 'Orders', icon: ClipboardList },
     { id: 'transactions', label: 'Transactions', icon: History },
     { id: 'ai', label: 'AI Intelligence', icon: Sparkles, highlight: true },
+    { id: 'psychology', label: 'Trading Psychology', icon: Brain },
   ];
 
   const nifty = marketIndices.find((i) => i.symbol === 'NIFTY50') || { price: 24850.2, change_pct: 0.42 };
@@ -97,11 +112,11 @@ export default function Navbar({
         </div>
 
         {/* Virtual Cash Chip */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-card)', padding: '2px 10px', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-focus)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-card)', padding: '3px 12px', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-focus)' }}>
             <Wallet size={13} style={{ color: 'var(--gain-color)' }} />
             <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Virtual Balance:</span>
-            <span className="font-mono" style={{ color: 'var(--gain-color)', fontWeight: 700, fontSize: '0.8rem' }}>
+            <span className="font-mono" style={{ color: 'var(--gain-color)', fontWeight: 700, fontSize: '0.82rem' }}>
               ₹{virtualBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             {onResetBalance && (
@@ -114,6 +129,31 @@ export default function Navbar({
               </button>
             )}
           </div>
+
+          {onOpenAddFunds && (
+            <button
+              onClick={onOpenAddFunds}
+              style={{
+                background: 'linear-gradient(135deg, #00d09c 0%, #059669 100%)',
+                color: '#ffffff',
+                border: 'none',
+                padding: '3px 10px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: '0 2px 8px rgba(0, 208, 156, 0.35)',
+                transition: 'all var(--transition-fast)'
+              }}
+              title="Add virtual paper trading funds"
+            >
+              <PlusCircle size={12} strokeWidth={2.5} />
+              <span>+ Add Money</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -211,12 +251,165 @@ export default function Navbar({
           )}
         </div>
 
-        {/* User Badge */}
+        {/* User Account / Auth Section */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div className="badge badge-outline" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px' }}>
-            <User size={14} style={{ color: 'var(--accent-blue)' }} />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Demo Pro Trader</span>
-          </div>
+          {currentUser ? (
+            <div ref={userMenuRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="badge badge-outline"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '5px 12px',
+                  background: 'var(--bg-card)',
+                  cursor: 'pointer',
+                  border: '1px solid var(--border-focus)',
+                  borderRadius: 'var(--radius-full)'
+                }}
+              >
+                <div
+                  style={{
+                    width: '22px',
+                    height: '22px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #00d09c 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    color: '#090d16'
+                  }}
+                >
+                  {(currentUser.full_name || currentUser.email || 'U')[0].toUpperCase()}
+                </div>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {currentUser.full_name || currentUser.email?.split('@')[0] || 'User'}
+                </span>
+                <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />
+              </button>
+
+              {/* User Dropdown */}
+              {showUserMenu && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    right: 0,
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-focus)',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: 'var(--shadow-xl)',
+                    minWidth: '220px',
+                    zIndex: 300,
+                    overflow: 'hidden',
+                    padding: '6px 0'
+                  }}
+                >
+                  <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                      {currentUser.full_name || 'Active Trader'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {currentUser.email}
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      if (onOpenAddFunds) onOpenAddFunds();
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      color: 'var(--gain-color)',
+                      fontWeight: 600
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <PlusCircle size={15} />
+                    <span>Add Virtual Funds</span>
+                  </div>
+
+                  {onResetBalance && (
+                    <div
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onResetBalance();
+                      }}
+                      style={{
+                        padding: '10px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary)'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <RotateCcw size={15} />
+                      <span>Reset Portfolio (₹10L)</span>
+                    </div>
+                  )}
+
+                  <div
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      if (onLogout) onLogout();
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      color: 'var(--loss-color)',
+                      borderTop: '1px solid var(--border-subtle)',
+                      marginTop: '4px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <LogOut size={15} />
+                    <span>Sign Out / Switch</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={onOpenLogin}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-full)',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 600,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(59, 130, 246, 0.35)'
+              }}
+            >
+              <LogIn size={14} />
+              <span>Sign In / Register</span>
+            </button>
+          )}
         </div>
       </div>
 

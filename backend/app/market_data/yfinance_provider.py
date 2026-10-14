@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import yfinance as yf
@@ -6,6 +7,30 @@ from app.market_data.provider_base import MarketDataProvider, NormalizedQuote, H
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+def safe_float(val) -> Optional[float]:
+    """Convert value to float safely, returning None for NaN, Inf, or invalid input."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except Exception:
+        return None
+
+def safe_int(val) -> Optional[int]:
+    """Convert value to int safely, returning None for NaN, Inf, or invalid input."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return int(f)
+    except Exception:
+        return None
 
 class YFinanceProvider(MarketDataProvider):
     """
@@ -37,58 +62,30 @@ class YFinanceProvider(MarketDataProvider):
             market_state = None
 
             if fast_info:
+                price = safe_float(getattr(fast_info, "last_price", None))
+                prev_close = safe_float(getattr(fast_info, "previous_close", None))
+                open_price = safe_float(getattr(fast_info, "open", None))
+                day_high = safe_float(getattr(fast_info, "day_high", None))
+                day_low = safe_float(getattr(fast_info, "day_low", None))
+                volume = safe_int(getattr(fast_info, "last_volume", None))
+                market_cap = safe_float(getattr(fast_info, "market_cap", None))
                 try:
-                    price = float(fast_info.last_price) if fast_info.last_price is not None else None
+                    currency = str(getattr(fast_info, "currency", None) or "INR")
                 except Exception:
-                    pass
-                
-                try:
-                    prev_close = float(fast_info.previous_close) if fast_info.previous_close is not None else None
-                except Exception:
-                    pass
-
-                try:
-                    open_price = float(fast_info.open) if fast_info.open is not None else None
-                except Exception:
-                    pass
-
-                try:
-                    day_high = float(fast_info.day_high) if fast_info.day_high is not None else None
-                except Exception:
-                    pass
-
-                try:
-                    day_low = float(fast_info.day_low) if fast_info.day_low is not None else None
-                except Exception:
-                    pass
-
-                try:
-                    volume = int(fast_info.last_volume) if fast_info.last_volume is not None else None
-                except Exception:
-                    pass
-
-                try:
-                    market_cap = float(fast_info.market_cap) if fast_info.market_cap is not None else None
-                except Exception:
-                    pass
-
-                try:
-                    currency = str(fast_info.currency or "INR")
-                except Exception:
-                    pass
+                    currency = "INR"
 
             # Fallback to recent history if fast_info is incomplete
             if price is None:
                 hist = ticker.history(period="5d", interval="1d")
                 if not hist.empty:
                     last_row = hist.iloc[-1]
-                    price = float(last_row["Close"])
-                    open_price = float(last_row["Open"])
-                    day_high = float(last_row["High"])
-                    day_low = float(last_row["Low"])
-                    volume = int(last_row["Volume"])
+                    price = safe_float(last_row["Close"])
+                    open_price = safe_float(last_row["Open"])
+                    day_high = safe_float(last_row["High"])
+                    day_low = safe_float(last_row["Low"])
+                    volume = safe_int(last_row["Volume"]) or 0
                     if len(hist) > 1:
-                        prev_close = float(hist.iloc[-2]["Close"])
+                        prev_close = safe_float(hist.iloc[-2]["Close"])
                     else:
                         prev_close = open_price
                     market_ts = str(hist.index[-1].isoformat())
@@ -173,13 +170,18 @@ class YFinanceProvider(MarketDataProvider):
             for idx, row in df.iterrows():
                 # Normalize timestamp
                 ts_str = idx.isoformat() if hasattr(idx, "isoformat") else str(idx)
+                o = safe_float(row["Open"]) or 0.0
+                h = safe_float(row["High"]) or 0.0
+                l = safe_float(row["Low"]) or 0.0
+                c = safe_float(row["Close"]) or 0.0
+                v = safe_int(row.get("Volume", 0)) or 0
                 bars.append(HistoricalBar(
                     timestamp=ts_str,
-                    open=round(float(row["Open"]), 2),
-                    high=round(float(row["High"]), 2),
-                    low=round(float(row["Low"]), 2),
-                    close=round(float(row["Close"]), 2),
-                    volume=int(row["Volume"]) if "Volume" in row else 0
+                    open=round(o, 2),
+                    high=round(h, 2),
+                    low=round(l, 2),
+                    close=round(c, 2),
+                    volume=v
                 ))
             return bars
         except Exception as e:
@@ -195,13 +197,6 @@ class YFinanceProvider(MarketDataProvider):
                 info = ticker.info or {}
             except Exception as e:
                 logger.warning(f"Could not load full ticker.info for {provider_symbol}: {e}")
-
-            # Safe extraction
-            def safe_float(val):
-                try:
-                    return float(val) if val is not None else None
-                except Exception:
-                    return None
 
             statements_summary = {}
             try:

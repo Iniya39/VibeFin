@@ -1,8 +1,21 @@
-from typing import Optional, List
+import math
+from typing import Optional, List, Any
 from fastapi import APIRouter, HTTPException, Query
 from app.market_data.symbols import STOCK_UNIVERSE, SECTORS, SYMBOL_MAP
 from app.market_data.service import market_data_service
 from app.core.database import get_db
+
+def sanitize_for_json(obj: Any) -> Any:
+    """Recursively replace NaN and Inf float values with None to guarantee JSON compliance."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    return obj
 
 router = APIRouter(prefix="/stocks", tags=["Stocks & Universe"])
 
@@ -160,15 +173,24 @@ def get_stock_detail(symbol: str):
     if not meta:
         raise HTTPException(status_code=404, detail=f"Stock {symbol} not found in 100-stock universe")
 
-    quote = market_data_service.get_stock_quote(symbol)
-    fundamentals = market_data_service.get_fundamentals(symbol)
+    try:
+        quote = market_data_service.get_stock_quote(symbol)
+        quote_dict = quote.model_dump()
+    except Exception:
+        quote_dict = {"symbol": symbol, "data_status": "unavailable", "price": None}
 
-    return {
+    try:
+        fundamentals = market_data_service.get_fundamentals(symbol)
+        fundamentals_dict = fundamentals.model_dump()
+    except Exception:
+        fundamentals_dict = {"symbol": symbol, "name": meta.get("name")}
+
+    return sanitize_for_json({
         "instrument": meta,
-        "quote": quote.model_dump(),
-        "fundamentals": fundamentals.model_dump(),
+        "quote": quote_dict,
+        "fundamentals": fundamentals_dict,
         "disclaimer": "Simulated trading data adapter. Not official exchange redistribution feed."
-    }
+    })
 
 @router.get("/{symbol}/quote")
 def get_stock_quote(symbol: str, force_refresh: bool = False):
@@ -178,7 +200,7 @@ def get_stock_quote(symbol: str, force_refresh: bool = False):
         raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
     
     quote = market_data_service.get_stock_quote(symbol, force_refresh=force_refresh)
-    return quote.model_dump()
+    return sanitize_for_json(quote.model_dump())
 
 @router.get("/{symbol}/history")
 def get_stock_history(
@@ -194,14 +216,14 @@ def get_stock_history(
     bars = market_data_service.get_history(symbol, period=period, interval=interval)
     indicators = market_data_service.calculate_indicators(bars)
 
-    return {
+    return sanitize_for_json({
         "symbol": symbol,
         "period": period,
         "interval": interval,
         "bars_count": len(bars),
         "bars": bars,
         "indicators": indicators
-    }
+    })
 
 @router.get("/{symbol}/fundamentals")
 def get_stock_fundamentals(symbol: str):
@@ -210,4 +232,4 @@ def get_stock_fundamentals(symbol: str):
     if symbol not in SYMBOL_MAP:
         raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
 
-    return market_data_service.get_fundamentals(symbol).model_dump()
+    return sanitize_for_json(market_data_service.get_fundamentals(symbol).model_dump())

@@ -2,13 +2,14 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks
 from app.market_data.service import market_data_service
 from app.core.config import settings
+from app.core.utils import sanitize_for_json
 
 router = APIRouter(prefix="/market", tags=["Market Overview & Indices"])
 
 @router.get("/overview")
 def get_market_overview():
     """Returns top-level market dashboard overview."""
-    return market_data_service.get_market_overview()
+    return sanitize_for_json(market_data_service.get_market_overview())
 
 @router.get("/indices")
 def get_indices():

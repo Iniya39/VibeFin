@@ -1,56 +1,146 @@
 import json
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from app.ai.intelligence import ai_intelligence
+from app.ai.market_agent import market_analysis_agent
+from app.ai.financial_agent import financial_research_agent
+from app.ai.portfolio_agent import portfolio_analysis_agent
+from app.ai.behavior_agent import trading_behavior_agent
+from app.ai.orchestrator import central_ai_orchestrator
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
+from app.core.utils import sanitize_for_json
 
-router = APIRouter(prefix="/ai", tags=["AI Investment Intelligence"])
+router = APIRouter(prefix="/ai", tags=["AI Investment Intelligence & Specialized Agents"])
 
 class CompanyResearchRequest(BaseModel):
     symbol: str
 
+class OrchestrationRequest(BaseModel):
+    query: Optional[str] = "comprehensive_audit"
+    symbol: Optional[str] = None
+    requested_agents: Optional[List[str]] = None
+
+# --- Specialized Agents Endpoints ---
+
+@router.get("/agents/market")
+@router.post("/agents/market")
+def get_market_agent_analysis(
+    symbol: Optional[str] = Query(None),
+    req: Optional[CompanyResearchRequest] = None
+):
+    """
+    Agent 1: Market Analysis Agent.
+    Evaluates historical trends, technical momentum, volume anomalies,
+    RSI, moving averages, support/resistance, and volatility for macro market or specific stock.
+    """
+    target_sym = (req.symbol if req and req.symbol else symbol)
+    res = market_analysis_agent.analyze(target_sym)
+    return sanitize_for_json(res.model_dump())
+
+@router.get("/agents/financial/{symbol}")
+def get_financial_agent_by_symbol(symbol: str):
+    """
+    Agent 2: Financial Research Agent (GET).
+    Analyzes fundamentals, valuation multiples, balance sheet, cash flow, SWOT, and verified filings.
+    """
+    res = financial_research_agent.analyze(symbol)
+    return sanitize_for_json(res.model_dump())
+
+@router.post("/agents/financial")
+def post_financial_agent_analysis(req: CompanyResearchRequest):
+    """
+    Agent 2: Financial Research Agent (POST).
+    Analyzes fundamentals, valuation multiples, balance sheet, cash flow, SWOT, and verified filings.
+    """
+    res = financial_research_agent.analyze(req.symbol)
+    return sanitize_for_json(res.model_dump())
+
+@router.get("/agents/portfolio")
+@router.post("/agents/portfolio")
+def get_portfolio_agent_analysis(current_user: dict = Depends(get_current_user)):
+    """
+    Agent 3: Portfolio Analysis Agent.
+    Audits actual user holdings, unrealized/realized P&L, sector weights, concentration risks, and rebalancing scenarios.
+    """
+    res = portfolio_analysis_agent.analyze(current_user["id"])
+    return sanitize_for_json(res.model_dump())
+
+@router.get("/agents/behavior")
+@router.post("/agents/behavior")
+def get_behavior_agent_analysis(current_user: dict = Depends(get_current_user)):
+    """
+    Agent 4: Trading Behavior Analysis Agent.
+    Evaluates observable transaction sequences, position-size variance, overtrading metrics, and risk alignment.
+    """
+    res = trading_behavior_agent.analyze(current_user["id"])
+    return sanitize_for_json(res.model_dump())
+
+# --- Central Orchestrator Endpoint ---
+
+@router.post("/orchestrate")
+def post_orchestrated_analysis(
+    req: OrchestrationRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Central AI Orchestration Layer.
+    Dispatches to requested agents concurrently, isolates cross-agent conflicts,
+    synthesizes multi-factor conclusions, and returns a unified report.
+    """
+    res = central_ai_orchestrator.orchestrate(
+        query=req.query or "comprehensive_audit",
+        symbol=req.symbol,
+        user_id=current_user["id"],
+        requested_agents=req.requested_agents
+    )
+    return sanitize_for_json(res.model_dump())
+
+# --- Legacy Endpoints Preserved for Backwards Compatibility ---
+
 @router.post("/market-analysis")
-def post_market_analysis():
-    """Generate high-level AI analysis of Indian equity markets and sector leadership."""
-    return ai_intelligence.analyze_market()
+def post_market_analysis(symbol: Optional[str] = Query(None)):
+    """Macro market pulse / stock market intelligence."""
+    if symbol:
+        res = market_analysis_agent.analyze(symbol)
+        return sanitize_for_json(res.model_dump())
+    return sanitize_for_json(ai_intelligence.analyze_market())
 
 @router.post("/company-research")
 def post_company_research(req: CompanyResearchRequest):
     """Generate comprehensive AI research report for any symbol from the 100-stock universe."""
-    res = ai_intelligence.research_company(req.symbol)
-    if "error" in res:
-        raise HTTPException(status_code=404, detail=res["error"])
-    return res
+    res = financial_research_agent.analyze(req.symbol)
+    return sanitize_for_json(res.model_dump())
 
 @router.post("/portfolio-analysis")
 def post_portfolio_analysis(current_user: dict = Depends(get_current_user)):
     """Generate AI diagnostic report on user's active holdings, risk, and concentration."""
-    return ai_intelligence.analyze_portfolio(current_user["id"])
+    res = portfolio_analysis_agent.analyze(current_user["id"])
+    return sanitize_for_json(res.model_dump())
 
 @router.post("/behavior-analysis")
 def post_behavior_analysis(current_user: dict = Depends(get_current_user)):
     """Analyze simulated trading patterns, win rate, and emotional discipline."""
-    return ai_intelligence.analyze_behavior(current_user["id"])
+    res = trading_behavior_agent.analyze(current_user["id"])
+    return sanitize_for_json(res.model_dump())
 
 @router.post("/comprehensive-analysis")
-def post_comprehensive_analysis(req: Optional[CompanyResearchRequest] = None, current_user: dict = Depends(get_current_user)):
+def post_comprehensive_analysis(
+    req: Optional[CompanyResearchRequest] = None,
+    current_user: dict = Depends(get_current_user)
+):
     """Multi-factor synthesis combining market regime, company research, and user portfolio."""
-    market_rep = ai_intelligence.analyze_market()
-    portfolio_rep = ai_intelligence.analyze_portfolio(current_user["id"])
-    company_rep = ai_intelligence.research_company(req.symbol) if req and req.symbol else None
-
-    return {
-        "market_regime": market_rep,
-        "portfolio_audit": portfolio_rep,
-        "company_research": company_rep,
-        "disclaimer": "AI investment intelligence generated using normalized historical and market indicators. Not financial advice."
-    }
+    res = central_ai_orchestrator.orchestrate(
+        query="comprehensive_analysis",
+        symbol=req.symbol if req else None,
+        user_id=current_user["id"]
+    )
+    return sanitize_for_json(res.model_dump())
 
 @router.get("/analysis-history")
 def list_analysis_history(current_user: dict = Depends(get_current_user)):
-    """List persistent AI analysis runs."""
+    """List persistent AI analysis runs (retained for backend logging / compliance)."""
     user_id = current_user["id"]
     with get_db() as conn:
         cursor = conn.cursor()
@@ -78,4 +168,4 @@ def get_analysis_run(run_id: str):
         run_dict["evidence_citations"] = json.loads(run_dict["evidence_citations_json"])
         del run_dict["details_json"]
         del run_dict["evidence_citations_json"]
-        return run_dict
+        return sanitize_for_json(run_dict)

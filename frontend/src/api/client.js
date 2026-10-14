@@ -160,6 +160,16 @@ class ApiClient {
       return this.request(`/trading/trades${query ? `?${query}` : ''}`);
     },
     ledger: () => this.request('/trading/ledger'),
+    depositFunds: (amount, method = 'UPI (Simulated)', description = null) =>
+      this.request('/trading/funds/deposit', {
+        method: 'POST',
+        body: JSON.stringify({ amount, method, description }),
+      }),
+    withdrawFunds: (amount, method = 'Bank Transfer (Simulated)') =>
+      this.request('/trading/funds/withdraw', {
+        method: 'POST',
+        body: JSON.stringify({ amount, method }),
+      }),
   };
 
   // Portfolio Endpoints
@@ -171,9 +181,30 @@ class ApiClient {
     risk: () => this.request('/portfolio/risk'),
   };
 
-  // AI Intelligence Endpoints
+  // AI Intelligence & Specialized Agents Endpoints
   ai = {
-    marketAnalysis: () => this.request('/ai/market-analysis', { method: 'POST' }),
+    // Specialized Agents
+    marketAgent: (symbol = null) =>
+      this.request(`/ai/agents/market${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`),
+    financialAgent: (symbol) =>
+      this.request(`/ai/agents/financial/${encodeURIComponent(symbol)}`),
+    portfolioAgent: () =>
+      this.request('/ai/agents/portfolio'),
+    behaviorAgent: () =>
+      this.request('/ai/agents/behavior'),
+    orchestrate: (query = 'comprehensive_audit', symbol = null, requested_agents = null) =>
+      this.request('/ai/orchestrate', {
+        method: 'POST',
+        body: JSON.stringify({
+          query,
+          symbol,
+          requested_agents: requested_agents || undefined
+        }),
+      }),
+
+    // Legacy Compatibility
+    marketAnalysis: (symbol = null) =>
+      this.request(`/ai/market-analysis${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`, { method: 'POST' }),
     companyResearch: (symbol) =>
       this.request('/ai/company-research', {
         method: 'POST',

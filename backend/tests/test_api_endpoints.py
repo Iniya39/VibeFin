@@ -89,3 +89,28 @@ def test_trading_and_portfolio_flow():
     port_data = port_resp.json()
     assert "summary" in port_data
     assert "holdings" in port_data
+
+def test_funds_deposit_and_withdrawal_endpoints():
+    login_resp = client.post("/api/v1/auth/demo-login")
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Deposit virtual funds
+    dep_resp = client.post("/api/v1/trading/funds/deposit", json={
+        "amount": 75000.0,
+        "method": "UPI (Google Pay)"
+    }, headers=headers)
+    assert dep_resp.status_code == 200
+    dep_data = dep_resp.json()
+    assert dep_data["success"] is True
+    assert "virtual_balance" in dep_data
+
+    # Withdraw virtual funds
+    wd_resp = client.post("/api/v1/trading/funds/withdraw", json={
+        "amount": 25000.0,
+        "method": "Bank Transfer"
+    }, headers=headers)
+    assert wd_resp.status_code == 200
+    wd_data = wd_resp.json()
+    assert wd_data["success"] is True
+

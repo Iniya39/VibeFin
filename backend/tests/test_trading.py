@@ -161,3 +161,33 @@ def test_limit_order_placement_and_cancellation():
         cursor = conn.cursor()
         cursor.execute("SELECT status FROM orders WHERE id = ?", (order["id"],))
         assert cursor.fetchone()["status"] == "CANCELLED"
+
+def test_funds_deposit_and_withdrawal():
+    user_id = create_test_user()
+    acc = trading_engine.get_or_create_account(user_id)
+    initial_bal = acc["virtual_balance"]
+
+    # Deposit ₹50,000
+    dep_res = trading_engine.deposit_funds(user_id, 50000.0, method="UPI (Google Pay)")
+    assert dep_res["success"] is True
+    assert dep_res["virtual_balance"] == initial_bal + 50000.0
+
+    # Withdraw ₹20,000
+    wd_res = trading_engine.withdraw_funds(user_id, 20000.0, method="Bank Transfer")
+    assert wd_res["success"] is True
+    assert wd_res["virtual_balance"] == initial_bal + 30000.0
+
+    # Over-withdrawal fails
+    fail_res = trading_engine.withdraw_funds(user_id, initial_bal + 100000.0)
+    assert fail_res["success"] is False
+    assert "Insufficient funds" in fail_res["error"]
+
+    # Ledger audit
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT type, amount FROM simulated_cash_ledger WHERE account_id = ? ORDER BY created_at DESC", (acc["id"],))
+        rows = cursor.fetchall()
+        types = [r["type"] for r in rows]
+        assert "DEPOSIT" in types
+        assert "WITHDRAWAL" in types
+

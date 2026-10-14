@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../api/client';
 import { X, ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
 
-export default function OrderModal({ stock, onClose, onOrderPlaced, availableCash = 1000000 }) {
+export default function OrderModal({ stock, onClose, onOrderPlaced, availableCash = 1000000, onOpenAddFunds }) {
   const [side, setSide] = useState('BUY'); // 'BUY' | 'SELL'
   const [orderType, setOrderType] = useState('MARKET'); // 'MARKET' | 'LIMIT'
   const [quantity, setQuantity] = useState(1);
@@ -214,6 +214,31 @@ export default function OrderModal({ stock, onClose, onOrderPlaced, availableCas
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'var(--gain-bg)', border: '1px solid var(--gain-border)', borderRadius: 'var(--radius-sm)', color: 'var(--gain-color)', fontSize: '0.82rem' }}>
               <CheckCircle2 size={16} />
               <span>{successMsg}</span>
+            </div>
+          )}
+
+          {/* Insufficient funds helper shortcut */}
+          {side === 'BUY' && totalImpact > availableCash && onOpenAddFunds && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0, 208, 156, 0.1)', border: '1px solid var(--gain-color)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Need more virtual funds?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenAddFunds();
+                }}
+                style={{
+                  background: 'var(--gain-color)',
+                  color: '#090d16',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '3px 8px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                + Add Money Now
+              </button>
             </div>
           )}
 
