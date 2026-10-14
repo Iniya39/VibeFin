@@ -1,0 +1,293 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap');
+
+:root {
+  --bg-primary: #090d16;
+  --bg-secondary: #0f1523;
+  --bg-card: #141c2e;
+  --bg-card-hover: #1a243a;
+  --bg-elevated: #1f2b45;
+  --bg-glass: rgba(15, 21, 35, 0.75);
+  --bg-glass-card: rgba(20, 28, 46, 0.85);
+
+  --accent-blue: #3b82f6;
+  --accent-blue-hover: #2563eb;
+  --accent-glow: rgba(59, 130, 246, 0.25);
+  
+  --gain-color: #00d09c;
+  --gain-bg: rgba(0, 208, 156, 0.12);
+  --gain-border: rgba(0, 208, 156, 0.35);
+  
+  --loss-color: #eb5b3c;
+  --loss-bg: rgba(235, 91, 60, 0.12);
+  --loss-border: rgba(235, 91, 60, 0.35);
+
+  --warning-color: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --info-color: #0284c7;
+
+  --border-subtle: #1e293b;
+  --border-focus: #334155;
+  --border-light: #2c3a52;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-inverse: #090d16;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Outfit', var(--font-sans);
+  --font-mono: 'Fira Code', 'Roboto Mono', monospace;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.25);
+  --shadow-glow-gain: 0 0 20px rgba(0, 208, 156, 0.2);
+  --shadow-glow-loss: 0 0 20px rgba(235, 91, 60, 0.2);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-focus);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Base Utility Classes */
+.font-mono {
+  font-family: var(--font-mono);
+}
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+.text-gain {
+  color: var(--gain-color) !important;
+}
+.text-loss {
+  color: var(--loss-color) !important;
+}
+.bg-gain {
+  background-color: var(--gain-bg) !important;
+  color: var(--gain-color) !important;
+  border: 1px solid var(--gain-border) !important;
+}
+.bg-loss {
+  background-color: var(--loss-bg) !important;
+  color: var(--loss-color) !important;
+  border: 1px solid var(--loss-border) !important;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.02em;
+}
+
+.badge-outline {
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+}
+
+.badge-fresh {
+  background: rgba(0, 208, 156, 0.15);
+  color: #00d09c;
+  border: 1px solid rgba(0, 208, 156, 0.3);
+}
+
+.badge-stale {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-unavailable {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* Glass Card */
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+.glass-card:hover {
+  border-color: var(--border-light);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition-fast);
+  outline: none;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn-primary {
+  background: var(--accent-blue);
+  color: #ffffff;
+}
+.btn-primary:hover {
+  background: var(--accent-blue-hover);
+  box-shadow: var(--shadow-glow-blue);
+}
+.btn-secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+}
+.btn-secondary:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-focus);
+}
+.btn-buy {
+  background: var(--gain-color);
+  color: #090d16;
+  font-weight: 700;
+}
+.btn-buy:hover {
+  background: #00f0b4;
+  box-shadow: var(--shadow-glow-gain);
+}
+.btn-sell {
+  background: var(--loss-color);
+  color: #ffffff;
+  font-weight: 700;
+}
+.btn-sell:hover {
+  background: #f06a4d;
+  box-shadow: var(--shadow-glow-loss);
+}
+
+/* Inputs */
+.input-field {
+  width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  transition: all var(--transition-fast);
+  outline: none;
+}
+.input-field:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+/* Table styles */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.875rem;
+}
+.data-table th {
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(15, 21, 35, 0.4);
+}
+.data-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.data-table tbody tr {
+  transition: background var(--transition-fast);
+}
+.data-table tbody tr:hover {
+  background: var(--bg-card-hover);
+}
+
+/* Modal Backdrop */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+.modal-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border-focus);
+  border-radius: var(--radius-lg);
+  max-width: 700px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
