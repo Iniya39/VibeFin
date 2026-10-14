@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from app.ai.schemas import OrchestratedAnalysis, AgentResponse
 from app.ai.market_agent import market_analysis_agent
 from app.ai.financial_agent import financial_research_agent
@@ -164,7 +164,7 @@ class CentralAIOrchestrator:
         results: Dict[str, AgentResponse],
         symbol: Optional[str],
         conflicts: List[str]
-    ) -> (str, str):
+    ) -> Tuple[str, str]:
         parts = []
         market = results.get("market")
         financial = results.get("financial")
