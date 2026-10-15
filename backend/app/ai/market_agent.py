@@ -118,27 +118,56 @@ class MarketAnalysisAgent:
         else:
             overall_signal = "Neutral / Sideways"
 
-        # 7. Scenarios
+        # 7. Scenarios (Model-Estimated Scenarios)
         scenarios = []
-        if current_price and resistance_level and support_level:
+        if current_price:
+            bull_target = round(resistance_level if (resistance_level and resistance_level > current_price) else current_price * 1.10, 2)
+            base_target = round(current_price * 1.02, 2)
+            bear_target = round(support_level if (support_level and support_level < current_price) else current_price * 0.92, 2)
+
+            bull_implied = round(((bull_target - current_price) / current_price) * 100, 2)
+            base_implied = round(((base_target - current_price) / current_price) * 100, 2)
+            bear_implied = round(((bear_target - current_price) / current_price) * 100, 2)
+
             scenarios = [
                 Scenario(
                     case="Bullish",
-                    target_range=f"₹{resistance_level:,.2f} – ₹{round(resistance_level * 1.05, 2):,.2f}",
-                    probability_assessment="High momentum continuation if volume sustains above 1.5x 20-day average.",
-                    catalysts=[f"Sustained breakout above ₹{sma20 or current_price}", "Sector tailwinds & institutional inflows"]
+                    target_price=bull_target,
+                    target_range=f"₹{round(bull_target * 0.98, 2):,.2f} – ₹{round(bull_target * 1.04, 2):,.2f}",
+                    implied_change_pct=bull_implied,
+                    probability_assessment="High momentum continuation if volume expands above 1.5x 20-day average.",
+                    assumptions=[
+                        f"Technical breakout confirmed above ₹{sma20 or current_price:,.2f} with institutional volume",
+                        "RSI oscillator stabilizes in the 55-68 momentum zone without exhaustion"
+                    ],
+                    catalysts=[f"Sustained breakout above ₹{sma20 or current_price:,.2f}", "Sector tailwinds & institutional inflows"],
+                    label="Model-Estimated Scenario"
                 ),
                 Scenario(
                     case="Base",
-                    target_range=f"₹{round((support_level + resistance_level)/2, 2):,.2f} – ₹{round(current_price * 1.02, 2):,.2f}",
-                    probability_assessment="Consolidation within the established 60-day range.",
-                    catalysts=["Range-bound trading with sideways oscillator alignment"]
+                    target_price=base_target,
+                    target_range=f"₹{round(current_price * 0.98, 2):,.2f} – ₹{round(current_price * 1.03, 2):,.2f}",
+                    implied_change_pct=base_implied,
+                    probability_assessment="Consolidation within established 60-day price discovery channel.",
+                    assumptions=[
+                        "Oscillation within defined moving average envelopes (SMA 20/50)",
+                        "Trading volume tracks near 20-day daily moving average"
+                    ],
+                    catalysts=["Range-bound trading with sideways oscillator alignment"],
+                    label="Model-Estimated Scenario"
                 ),
                 Scenario(
                     case="Bearish",
-                    target_range=f"₹{round(support_level * 0.96, 2):,.2f} – ₹{support_level:,.2f}",
+                    target_price=bear_target,
+                    target_range=f"₹{round(bear_target * 0.96, 2):,.2f} – ₹{round(bear_target * 1.02, 2):,.2f}",
+                    implied_change_pct=bear_implied,
                     probability_assessment="Retest of recent demand floor upon breakdown below key moving averages.",
-                    catalysts=[f"Breakdown below ₹{support_level}", "RSI sliding into sub-40 bearish trajectory"]
+                    assumptions=[
+                        f"Failure to hold support band near ₹{support_level or current_price * 0.95:,.2f}",
+                        "RSI deteriorating into sub-40 bearish trajectory with sector distribution"
+                    ],
+                    catalysts=[f"Breakdown below ₹{support_level or current_price * 0.95:,.2f}", "RSI sliding into sub-40 bearish trajectory"],
+                    label="Model-Estimated Scenario"
                 )
             ]
 
@@ -151,13 +180,23 @@ class MarketAnalysisAgent:
         confidence_score = 0.88 if len(history) >= 100 else 0.65
 
         # 9. Key Findings
+        price_str = f"₹{current_price:,.2f}" if current_price is not None else "Price unavailable"
+        chg_str = f" ({change_pct:+.2f}%)" if change_pct is not None else ""
         key_findings = [
-            f"Price currently at ₹{current_price:,.2f} ({change_pct:+.2f}%) on {meta['exchange']}.",
+            f"Price currently at {price_str}{chg_str} on {meta['exchange']}.",
             f"Technical momentum classified as '{overall_signal}' with RSI(14) at {rsi or 'N/A'}.",
             f"20-day Volume Anomaly Ratio: {volume_anomaly_ratio}x ({volume_status}).",
-            f"Support estimated near ₹{support_level:,.2f} and Resistance near ₹{resistance_level:,.2f}."
         ]
-        if sma200:
+        if support_level is not None and resistance_level is not None:
+            key_findings.append(f"Support estimated near ₹{support_level:,.2f} and Resistance near ₹{resistance_level:,.2f}.")
+        elif support_level is not None:
+            key_findings.append(f"Support estimated near ₹{support_level:,.2f}.")
+        elif resistance_level is not None:
+            key_findings.append(f"Resistance estimated near ₹{resistance_level:,.2f}.")
+        else:
+            key_findings.append("Support and resistance levels require additional historical trading volume.")
+
+        if sma200 and current_price:
             key_findings.append(f"Long-term Trend: Price is {'above' if current_price > sma200 else 'below'} 200-day SMA (₹{sma200:,.2f}).")
         if volatility_30d:
             key_findings.append(f"Annualized 30-day volatility measured at {volatility_30d}%.")
@@ -165,11 +204,15 @@ class MarketAnalysisAgent:
         missing_data = []
         if not sma200:
             missing_data.append("200-day SMA requires at least 200 trading days of continuous history.")
+        if not support_level or not resistance_level:
+            missing_data.append("Support and resistance calculations require at least 20 historical sessions.")
+
+        price_disp = f"₹{current_price:,.2f}" if current_price is not None else "N/A"
 
         return AgentResponse(
             agent_name=self.agent_name,
             entity=symbol,
-            summary=f"{meta['name']} ({symbol}) displays a {overall_signal.lower()} market profile trading at ₹{current_price:,.2f} with RSI at {rsi or 'N/A'}.",
+            summary=f"{meta['name']} ({symbol}) displays a {overall_signal.lower()} market profile trading at {price_disp} with RSI at {rsi or 'N/A'}.",
             signal=overall_signal,
             key_findings=key_findings,
             supporting_data={
@@ -212,7 +255,8 @@ class MarketAnalysisAgent:
                 "factors": confidence_factors
             },
             missing_data=missing_data,
-            warnings=[quote.warnings] if quote.warnings else []
+            warnings=[quote.warnings] if quote.warnings else [],
+            disclaimer="Educational technical market intelligence. Not SEBI-registered financial advice. Does not constitute a buy, sell, or hold recommendation."
         )
 
     def _analyze_macro_market(self) -> AgentResponse:
@@ -225,12 +269,12 @@ class MarketAnalysisAgent:
 
         nifty = next((i for i in indices if i["symbol"] == "NIFTY50"), None)
         sensex = next((i for i in indices if i["symbol"] == "SENSEX"), None)
-        nifty_change = nifty.get("change_pct", 0.0) if nifty else 0.0
-        sensex_change = sensex.get("change_pct", 0.0) if sensex else 0.0
+        nifty_change = (nifty.get("change_pct") or 0.0) if nifty else 0.0
+        sensex_change = (sensex.get("change_pct") or 0.0) if sensex else 0.0
 
         sorted_sectors = sorted(
             sector_perf.items(),
-            key=lambda x: x[1].get("avg_change_pct", 0.0),
+            key=lambda x: (x[1].get("avg_change_pct") or 0.0),
             reverse=True
         )
         leading_sec = sorted_sectors[0][1]["sector_name"] if sorted_sectors else "Technology"
@@ -238,9 +282,11 @@ class MarketAnalysisAgent:
 
         regime = "Bullish" if nifty_change > 0.3 else ("Bearish" if nifty_change < -0.3 else "Neutral / Consolidating")
 
+        nifty_price = nifty.get("price") if nifty else "N/A"
+        sensex_price = sensex.get("price") if sensex else "N/A"
         key_findings = [
-            f"NIFTY 50 trading at ₹{nifty.get('price', 'N/A')} ({nifty_change:+.2f}%).",
-            f"S&P BSE SENSEX trading at ₹{sensex.get('price', 'N/A')} ({sensex_change:+.2f}%).",
+            f"NIFTY 50 trading at ₹{nifty_price} ({nifty_change:+.2f}%).",
+            f"S&P BSE SENSEX trading at ₹{sensex_price} ({sensex_change:+.2f}%).",
             f"Sector Leadership: {leading_sec} leading performance.",
             f"Sector Laggard: {lagging_sec} facing relative distribution.",
             f"Market Breadth: {len(gainers)} top gainers vs {len(losers)} top losers in universe sample."

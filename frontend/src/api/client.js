@@ -160,16 +160,32 @@ class ApiClient {
       return this.request(`/trading/trades${query ? `?${query}` : ''}`);
     },
     ledger: () => this.request('/trading/ledger'),
-    depositFunds: (amount, method = 'UPI (Simulated)', description = null) =>
-      this.request('/trading/funds/deposit', {
+    depositFunds: async (amount, method = 'UPI (Simulated)', description = null) => {
+      if (!this.token) {
+        try {
+          await this.auth.demoLogin();
+        } catch (e) {
+          console.warn('Auto demo session init failed:', e);
+        }
+      }
+      return this.request('/trading/funds/deposit', {
         method: 'POST',
         body: JSON.stringify({ amount, method, description }),
-      }),
-    withdrawFunds: (amount, method = 'Bank Transfer (Simulated)') =>
-      this.request('/trading/funds/withdraw', {
+      });
+    },
+    withdrawFunds: async (amount, method = 'Bank Transfer (Simulated)') => {
+      if (!this.token) {
+        try {
+          await this.auth.demoLogin();
+        } catch (e) {
+          console.warn('Auto demo session init failed:', e);
+        }
+      }
+      return this.request('/trading/funds/withdraw', {
         method: 'POST',
         body: JSON.stringify({ amount, method }),
-      }),
+      });
+    },
   };
 
   // Portfolio Endpoints
@@ -201,6 +217,19 @@ class ApiClient {
           requested_agents: requested_agents || undefined
         }),
       }),
+
+    chat: (query, symbol = null, conversationHistory = [], sessionId = null, section = null) =>
+      this.request('/ai/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          query,
+          symbol: symbol || undefined,
+          conversation_history: conversationHistory?.length ? conversationHistory : undefined,
+          session_id: sessionId || undefined,
+          section: section || undefined
+        }),
+      }),
+    chatStatus: () => this.request('/ai/chat/status'),
 
     // Legacy Compatibility
     marketAnalysis: (symbol = null) =>

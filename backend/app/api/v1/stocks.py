@@ -5,17 +5,7 @@ from app.market_data.symbols import STOCK_UNIVERSE, SECTORS, SYMBOL_MAP
 from app.market_data.service import market_data_service
 from app.core.database import get_db
 
-def sanitize_for_json(obj: Any) -> Any:
-    """Recursively replace NaN and Inf float values with None to guarantee JSON compliance."""
-    if isinstance(obj, dict):
-        return {k: sanitize_for_json(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [sanitize_for_json(v) for v in obj]
-    elif isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None
-        return obj
-    return obj
+from app.core.utils import sanitize_for_json
 
 router = APIRouter(prefix="/stocks", tags=["Stocks & Universe"])
 

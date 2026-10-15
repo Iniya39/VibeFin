@@ -267,13 +267,18 @@ export default function App() {
                 onOpenOrder={handleOpenOrder}
                 onResetBalance={handleResetBalance}
                 onOpenAddFunds={() => setShowAddFundsModal(true)}
+                virtualBalance={virtualBalance}
+                onFundsUpdated={refreshAccount}
               />
             )}
             {activeTab === 'orders' && (
               <OrdersView onSelectStock={(sym) => setSelectedStockSymbol(sym)} />
             )}
             {activeTab === 'transactions' && (
-              <TransactionsView onSelectStock={(sym) => setSelectedStockSymbol(sym)} />
+              <TransactionsView
+                onSelectStock={(sym) => setSelectedStockSymbol(sym)}
+                virtualBalance={virtualBalance}
+              />
             )}
             {activeTab === 'ai' && (
               <AIInsightsView
@@ -316,9 +321,17 @@ export default function App() {
         isOpen={showAddFundsModal}
         onClose={() => setShowAddFundsModal(false)}
         currentBalance={virtualBalance}
-        onFundsUpdated={(newBal) => {
+        onFundsUpdated={async (newBal) => {
           setVirtualBalance(newBal);
-          refreshAccount();
+          await refreshAccount();
+          if (!currentUser && api.token) {
+            try {
+              const u = await api.users.getMe();
+              if (u?.user) setCurrentUser(u.user);
+            } catch (e) {
+              console.warn('Failed to load user info after deposit:', e);
+            }
+          }
         }}
       />
 

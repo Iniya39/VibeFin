@@ -1,7 +1,10 @@
 import json
+import logging
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 from app.ai.intelligence import ai_intelligence
 from app.ai.market_agent import market_analysis_agent
 from app.ai.financial_agent import financial_research_agent
@@ -12,6 +15,13 @@ from app.api.v1.auth import get_current_user
 from app.core.database import get_db
 from app.core.utils import sanitize_for_json
 
+from app.ai.gemini_service import gemini_service
+from app.market_data.service import market_data_service
+from app.market_data.symbols import SYMBOL_MAP
+from app.api.v1.auth import get_current_user, security
+from app.core.security import decode_access_token
+from fastapi.security import HTTPAuthorizationCredentials
+
 router = APIRouter(prefix="/ai", tags=["AI Investment Intelligence & Specialized Agents"])
 
 class CompanyResearchRequest(BaseModel):
@@ -21,6 +31,310 @@ class OrchestrationRequest(BaseModel):
     query: Optional[str] = "comprehensive_audit"
     symbol: Optional[str] = None
     requested_agents: Optional[List[str]] = None
+
+class ChatMessage(BaseModel):
+    role: str  # 'user' | 'assistant' | 'system'
+    content: str
+
+class AIChatRequest(BaseModel):
+    query: str
+    symbol: Optional[str] = None
+    section: Optional[str] = None  # 'stocks' | 'markets' | 'ai' | 'portfolio'
+    conversation_history: Optional[List[ChatMessage]] = None
+    session_id: Optional[str] = None
+
+def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[dict]:
+    if not credentials:
+        return None
+    try:
+        payload = decode_access_token(credentials.credentials)
+        if not payload or "sub" not in payload:
+            return None
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, email, full_name, is_active FROM users WHERE id = ?", (payload["sub"],))
+            user = cursor.fetchone()
+            return dict(user) if user and user["is_active"] else None
+    except Exception:
+        return None
+
+def detect_comparison_symbol(query: str, active_symbol: Optional[str] = None) -> Optional[str]:
+    """Detect if the user is asking about or comparing with another company."""
+    q_upper = query.upper()
+    q_lower = query.lower()
+    
+    # Priority check for common Indian company names and tickers
+    company_aliases = {
+        "INFOSYS": "INFY",
+        "INFY": "INFY",
+        "TCS": "TCS",
+        "TATA CONSULTANCY": "TCS",
+        "RELIANCE": "RELIANCE",
+        "HDFC": "HDFCBANK",
+        "HDFC BANK": "HDFCBANK",
+        "HDFCBANK": "HDFCBANK",
+        "ICICI": "ICICIBANK",
+        "ICICI BANK": "ICICIBANK",
+        "STATE BANK": "SBIN",
+        "SBI": "SBIN",
+        "SBIN": "SBIN",
+        "WIPRO": "WIPRO",
+        "HCL": "HCLTECH",
+        "HCL TECH": "HCLTECH",
+        "HCLTECH": "HCLTECH",
+        "TECH MAHINDRA": "TECHM",
+        "TECHM": "TECHM",
+        "TATA MOTORS": "TATAMOTORS",
+        "TATAMOTORS": "TATAMOTORS",
+        "MARUTI": "MARUTI",
+        "BAJFINANCE": "BAJFINANCE",
+        "BAJAJ FINANCE": "BAJFINANCE",
+        "BHARTI": "BHARTIARTL",
+        "AIRTEL": "BHARTIARTL",
+        "BHARTIARTL": "BHARTIARTL",
+        "L&T": "LT",
+        "LT": "LT",
+        "LARSEN": "LT",
+        "ITC": "ITC",
+        "KOTAK": "KOTAKBANK",
+        "KOTAK BANK": "KOTAKBANK",
+        "AXIS": "AXISBANK",
+        "AXIS BANK": "AXISBANK",
+        "SUN PHARMA": "SUNPHARMA",
+        "SUNPHARMA": "SUNPHARMA",
+        "TITAN": "TITAN",
+        "ASIAN PAINTS": "ASIANPAINT",
+        "ASIANPAINT": "ASIANPAINT"
+    }
+
+    # Match aliases against query
+    for name, target_sym in company_aliases.items():
+        if name in q_upper or name.lower() in q_lower:
+            # If it's different from the currently active symbol, return as comparison
+            clean_active = active_symbol.replace(".NS", "").replace(".BO", "") if active_symbol else None
+            if not clean_active or target_sym != clean_active:
+                return target_sym
+
+    # Fallback to general symbols in SYMBOL_MAP
+    for sym, meta in SYMBOL_MAP.items():
+        clean_sym = sym.replace(".NS", "").replace(".BO", "")
+        clean_active = active_symbol.replace(".NS", "").replace(".BO", "") if active_symbol else None
+        if clean_sym != clean_active:
+            if clean_sym in q_upper.split() or (meta.get("name") and meta["name"].lower() in q_lower):
+                return clean_sym
+
+    return None
+
+# --- Conversational AI Agent (Google Gemini) Endpoints ---
+
+@router.get("/chat/status")
+def get_chat_status():
+    """Returns Google Gemini API status without revealing secrets."""
+    gemini_service.key_manager.refresh_keys()
+    pool = gemini_service.key_manager.get_pool_status()
+    return sanitize_for_json({
+        "provider": "Google Gemini",
+        "has_usable_key": pool.get("has_usable_key", False),
+        "is_configured": pool.get("is_configured", False),
+        "pool": pool,
+        "model": gemini_service.model
+    })
+
+@router.post("/chat")
+def post_ai_chat(req: AIChatRequest, user: Optional[dict] = Depends(get_optional_user)):
+    """
+    Conversational AI Market & Financial Research Agent powered by Google Gemini.
+    Supports continuous chat history, symbol selection, grounded stock data, and safety boundaries.
+    """
+    symbol = req.symbol.strip().upper() if req.symbol else None
+    meta = None
+    if symbol:
+        meta = SYMBOL_MAP.get(symbol)
+        if not meta and not symbol.endswith(".NS"):
+            alt_sym = f"{symbol}.NS"
+            if alt_sym in SYMBOL_MAP:
+                symbol = alt_sym
+                meta = SYMBOL_MAP.get(symbol)
+
+    stock_context = None
+    scenarios_list = []
+
+    if symbol:
+        try:
+            quote = market_data_service.get_stock_quote(symbol)
+            fundamentals = market_data_service.get_fundamentals(symbol)
+            history = market_data_service.get_history(symbol, period="6mo", interval="1d")
+            indicators = market_data_service.calculate_indicators(history)
+            market_res = market_analysis_agent.analyze(symbol)
+            fin_res = financial_research_agent.analyze(symbol)
+
+            scenarios_raw = fin_res.scenarios or market_res.scenarios or []
+            scenarios_list = [s.model_dump() for s in scenarios_raw]
+
+            from app.market_data.reference_data import REFERENCE_STOCK_DATA
+            ref = REFERENCE_STOCK_DATA.get(symbol.replace(".NS", ""), {})
+
+            stock_context = {
+                "symbol": symbol.replace(".NS", ""),
+                "name": meta["name"] if meta else symbol,
+                "exchange": meta.get("exchange", "NSE") if meta else "NSE",
+                "sector_name": meta.get("sector_name", "N/A") if meta else "N/A",
+                "subsector": meta.get("subsector", "N/A") if meta else "N/A",
+                "business_summary": getattr(fundamentals, "business_summary", None) or f"{meta['name'] if meta else symbol} is an Indian exchange-listed company operating in the {meta.get('sector_name', 'equity')} sector, specializing in {meta.get('subsector', 'operations')}.",
+                "price": quote.price,
+                "change_pct": quote.change_pct,
+                "previous_close": quote.previous_close or ref.get("prev_close"),
+                "day_high": quote.day_high,
+                "day_low": quote.day_low,
+                "volume": quote.volume,
+                "high_52w": getattr(fundamentals, "high_52w", None) or ref.get("high_52w"),
+                "low_52w": getattr(fundamentals, "low_52w", None) or ref.get("low_52w"),
+                "eps": getattr(fundamentals, "eps", None),
+                "data_status": quote.data_status,
+                "fetched_at": quote.fetched_at,
+                "rsi_14": indicators.get("latest", {}).get("rsi14"),
+                "sma_20": indicators.get("latest", {}).get("sma20"),
+                "sma_50": indicators.get("latest", {}).get("sma50"),
+                "sma_200": indicators.get("latest", {}).get("sma200"),
+                "volatility_30d": market_res.supporting_data.get("volatility_30d_pct"),
+                "support_level": market_res.supporting_data.get("support_level"),
+                "resistance_level": market_res.supporting_data.get("resistance_level"),
+                "pe_ratio": fundamentals.pe_ratio or ref.get("pe"),
+                "pb_ratio": fundamentals.pb_ratio or ref.get("pb"),
+                "roe_pct": fin_res.supporting_data.get("roe") or getattr(fundamentals, "roe", None) or ref.get("roe"),
+                "debt_to_equity_ratio": fin_res.supporting_data.get("debt_to_equity") or getattr(fundamentals, "debt_to_equity_ratio", None),
+                "debt_classification": fin_res.supporting_data.get("debt_classification") or getattr(fundamentals, "debt_classification", "Verified Balance Sheet"),
+                "balance_sheet_debt": getattr(fundamentals, "balance_sheet_debt", None),
+                "market_cap": round(fundamentals.market_cap / 1e7, 2) if fundamentals.market_cap else (round(ref.get("market_cap", 0) / 1e7, 2) if ref.get("market_cap") else None),
+                "dividend_yield": fin_res.supporting_data.get("dividend_yield") or getattr(fundamentals, "dividend_yield", None),
+                "scenarios": scenarios_list
+            }
+
+            # Check if comparison stock mentioned
+            comp_sym = detect_comparison_symbol(req.query, symbol)
+            if comp_sym:
+                try:
+                    c_quote = market_data_service.get_stock_quote(comp_sym)
+                    c_fund = market_data_service.get_fundamentals(comp_sym)
+                    c_hist = market_data_service.get_history(comp_sym, period="3mo", interval="1d")
+                    c_ind = market_data_service.calculate_indicators(c_hist)
+                    c_meta = SYMBOL_MAP.get(comp_sym, {})
+                    stock_context["comparison"] = {
+                        "symbol": comp_sym,
+                        "name": c_meta.get("name", comp_sym),
+                        "sector_name": c_meta.get("sector_name", "N/A"),
+                        "price": c_quote.price,
+                        "change_pct": c_quote.change_pct,
+                        "pe_ratio": c_fund.pe_ratio,
+                        "pb_ratio": c_fund.pb_ratio,
+                        "roe_pct": c_fund.roe,
+                        "debt_to_equity_ratio": c_fund.debt_to_equity_ratio,
+                        "market_cap": round(c_fund.market_cap / 1e7, 2) if c_fund.market_cap else None,
+                        "rsi_14": c_ind.get("latest", {}).get("rsi14"),
+                        "sma_50": c_ind.get("latest", {}).get("sma50"),
+                    }
+                except Exception as ce:
+                    logger.debug(f"Comparison stock lookup failed for {comp_sym}: {ce}")
+
+        except Exception as e:
+            # Fallback to basic reference info if provider fails
+            stock_context = {
+                "symbol": symbol.replace(".NS", ""),
+                "name": meta["name"] if meta else symbol,
+                "warning": f"Partial market data loaded: {str(e)}"
+            }
+    else:
+        # Macro market context
+        try:
+            overview = market_data_service.get_market_overview()
+            stock_context = {
+                "type": "macro_market",
+                "overview": overview
+            }
+        except Exception:
+            stock_context = {"type": "macro_market"}
+
+    # Authenticated user portfolio grounding if requested or in portfolio section
+    q_low = req.query.lower()
+    is_portfolio_query = (req.section == "portfolio" or any(w in q_low for w in ["portfolio", "holdings", "my shares", "my balance", "my stock", "unrealized"]))
+    if user and is_portfolio_query:
+        try:
+            from app.trading.engine import trading_engine
+            account = trading_engine.get_or_create_account(user["id"])
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM holdings WHERE account_id = ?", (account["id"],))
+                u_holdings = [dict(h) for h in cursor.fetchall()]
+            
+            tot_inv = 0.0
+            tot_val = 0.0
+            stock_position = None
+            clean_sym = symbol.replace(".NS", "") if symbol else None
+
+            for h in u_holdings:
+                h_sym = h["symbol"].replace(".NS", "")
+                h_quote = market_data_service.get_stock_quote(h_sym)
+                h_curr = h_quote.price or h["average_price"]
+                h_inv = round(h["quantity"] * h["average_price"], 2)
+                h_val = round(h["quantity"] * h_curr, 2)
+                tot_inv += h_inv
+                tot_val += h_val
+
+                if clean_sym and h_sym == clean_sym:
+                    stock_position = {
+                        "quantity": h["quantity"],
+                        "average_price": h["average_price"],
+                        "current_price": h_curr,
+                        "unrealized_pnl": round(h_val - h_inv, 2)
+                    }
+
+            if not stock_context:
+                stock_context = {"type": "portfolio"}
+
+            stock_context["user_portfolio"] = {
+                "cash_balance": account.get("virtual_balance", 0.0),
+                "total_invested": tot_inv,
+                "total_market_value": tot_val,
+                "total_value": tot_val + account.get("virtual_balance", 0.0),
+                "holdings_count": len(u_holdings)
+            }
+            if stock_position:
+                stock_context["user_stock_position"] = stock_position
+
+        except Exception as pe:
+            logger.debug(f"User portfolio context injection skipped: {pe}")
+
+    # Assemble conversation messages
+    messages = []
+    if req.conversation_history:
+        for m in req.conversation_history:
+            messages.append({"role": m.role, "content": m.content})
+    
+    # Add latest query
+    messages.append({"role": "user", "content": req.query})
+
+    # Call Google Gemini service
+    gemini_result = gemini_service.chat(
+        messages=messages,
+        stock_context=stock_context
+    )
+
+    return sanitize_for_json({
+        "success": gemini_result.get("success", False),
+        "reply": gemini_result.get("reply", ""),
+        "error": gemini_result.get("error"),
+        "rate_limited": gemini_result.get("rate_limited", False),
+        "unconfigured": gemini_result.get("unconfigured", False),
+        "provider": "Google Gemini",
+        "model": gemini_result.get("model", gemini_service.model),
+        "key_masked": gemini_result.get("key_masked"),
+        "key_index": gemini_result.get("key_index"),
+        "symbol": symbol.replace(".NS", "") if symbol else None,
+        "stock_context": stock_context,
+        "scenarios": scenarios_list,
+        "pool_status": gemini_service.key_manager.get_pool_status(),
+        "disclaimer": "Educational financial research. Not SEBI-registered financial advice. Does not constitute a buy, sell, or hold recommendation."
+    })
 
 # --- Specialized Agents Endpoints ---
 

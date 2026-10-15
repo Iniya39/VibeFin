@@ -20,6 +20,7 @@ import {
   Building2,
   DollarSign
 } from 'lucide-react';
+import AISidePanel from '../components/AISidePanel';
 
 export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, sectors = [] }) {
   const [activeTab, setActiveTab] = useState('directory'); // 'directory' | 'research'
@@ -33,6 +34,8 @@ export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, se
 
   // Financial Research Agent state
   const [researchSymbol, setResearchSymbol] = useState('TCS');
+  const [selectedStockForAI, setSelectedStockForAI] = useState('TCS');
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [researchData, setResearchData] = useState(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchError, setResearchError] = useState(null);
@@ -88,6 +91,7 @@ export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, se
 
   const handleOpenResearchForStock = (symbol) => {
     setResearchSymbol(symbol);
+    setSelectedStockForAI(symbol);
     setActiveTab('research');
     fetchResearch(symbol);
   };
@@ -108,8 +112,10 @@ export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, se
   const risks = researchData?.risks_and_limitations || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}>
-      {/* Header with Navigation Toggle */}
+    <div className="section-layout-wrapper" style={{ paddingBottom: '40px' }}>
+      {/* Left Column: Main Stocks Content */}
+      <div className="section-main-column">
+        {/* Header with Navigation Toggle */}
       <div
         className="glass-card"
         style={{
@@ -265,7 +271,7 @@ export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, se
                   {filteredStocks.map((stock) => {
                     const isUp = (stock.change_pct || 0) >= 0;
                     return (
-                      <tr key={stock.symbol} style={{ cursor: 'pointer' }} onClick={() => onSelectStock && onSelectStock(stock.symbol)}>
+                      <tr key={stock.symbol} style={{ cursor: 'pointer' }} onClick={() => { setSelectedStockForAI(stock.symbol); if (onSelectStock) onSelectStock(stock.symbol); }}>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <strong className="font-mono">{stock.symbol}</strong>
@@ -328,7 +334,7 @@ export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, se
                     key={stock.symbol}
                     className="glass-card"
                     style={{ padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer' }}
-                    onClick={() => onSelectStock && onSelectStock(stock.symbol)}
+                    onClick={() => { setSelectedStockForAI(stock.symbol); if (onSelectStock) onSelectStock(stock.symbol); }}
                   >
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -591,11 +597,30 @@ export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, se
                 </div>
 
                 <div className="glass-card" style={{ padding: '16px' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>DEBT-TO-EQUITY</span>
-                  <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '4px', color: (supporting.debt_to_equity || 0) > 2.0 ? 'var(--loss-color)' : 'var(--text-primary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>DEBT-TO-EQUITY</span>
+                    {supporting.debt_classification && (
+                      <span
+                        className={`badge ${
+                          supporting.debt_classification.includes('Low') ? 'bg-gain' :
+                          supporting.debt_classification.includes('Moderate') ? 'badge-outline' :
+                          supporting.debt_classification.includes('High') ? 'bg-loss' :
+                          'badge-outline'
+                        }`}
+                        style={{ fontSize: '0.62rem', padding: '2px 6px' }}
+                      >
+                        {supporting.debt_classification}
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '4px', color: (supporting.debt_to_equity || 0) > 2.0 ? 'var(--loss-color)' : (supporting.debt_to_equity || 0) <= 0.5 ? 'var(--gain-color)' : 'var(--text-primary)' }}>
                     {supporting.debt_to_equity !== null && supporting.debt_to_equity !== undefined ? `${supporting.debt_to_equity}x` : 'Prudent (<0.8x)'}
                   </div>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Balance Sheet Solvency</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    {supporting.balance_sheet_debt?.total_debt
+                      ? `Debt ₹${(supporting.balance_sheet_debt.total_debt / 1e7).toFixed(0)} Cr / Eq ₹${(supporting.balance_sheet_debt.stockholders_equity / 1e7).toFixed(0)} Cr`
+                      : 'Balance Sheet Solvency'}
+                  </span>
                 </div>
 
                 <div className="glass-card" style={{ padding: '16px' }}>
@@ -679,89 +704,126 @@ export default function StocksView({ stocks = [], onSelectStock, onOpenOrder, se
                 </div>
               )}
 
-              {/* Scenarios */}
+              {/* Model-Estimated Scenarios */}
               {scenarios.length > 0 && (
                 <div className="glass-card" style={{ padding: '20px' }}>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                    <TrendingUp size={18} style={{ color: 'var(--accent-blue)' }} /> Fundamental Scenarios & Valuation Targets
-                  </h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <TrendingUp size={18} style={{ color: 'var(--accent-blue)' }} /> Model-Estimated Scenarios & Valuation Targets
+                    </h3>
+                    <span className="badge badge-outline" style={{ fontSize: '0.7rem' }}>
+                      Model-Estimated Scenarios
+                    </span>
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-                    {scenarios.map((sc, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: '16px',
-                          borderRadius: 'var(--radius-sm)',
-                          background: 'rgba(15, 23, 42, 0.7)',
-                          border: '1px solid var(--border-subtle)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between'
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>{sc.case}</span>
-                            <span className="badge badge-outline" style={{ fontSize: '0.7rem' }}>{sc.probability_assessment}</span>
+                    {scenarios.map((sc, idx) => {
+                      const isBull = sc.case.includes('Bullish');
+                      const isBear = sc.case.includes('Bearish');
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: '16px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: isBull ? 'rgba(0, 208, 156, 0.05)' : isBear ? 'rgba(235, 91, 60, 0.05)' : 'rgba(15, 23, 42, 0.7)',
+                            border: `1px solid ${isBull ? 'rgba(0, 208, 156, 0.25)' : isBear ? 'rgba(235, 91, 60, 0.25)' : 'var(--border-subtle)'}`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: isBull ? 'var(--gain-color)' : isBear ? 'var(--loss-color)' : 'var(--text-primary)' }}>
+                                {sc.case} Scenario
+                              </span>
+                              {sc.implied_change_pct !== undefined && (
+                                <span className={`badge ${sc.implied_change_pct >= 0 ? 'bg-gain' : 'bg-loss'}`} style={{ fontSize: '0.72rem' }}>
+                                  {sc.implied_change_pct >= 0 ? '+' : ''}{sc.implied_change_pct}%
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="font-mono" style={{ fontSize: '1.2rem', fontWeight: 800, margin: '10px 0', color: 'var(--text-primary)' }}>
+                              {sc.target_price ? `₹${sc.target_price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : sc.target_range}
+                            </div>
+
+                            {sc.target_range && sc.target_price && (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                Range: {sc.target_range}
+                              </div>
+                            )}
+
+                            {sc.assumptions && sc.assumptions.length > 0 && (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Assumptions:</span>
+                                {sc.assumptions.map((a, aIdx) => (
+                                  <div key={aIdx} style={{ display: 'flex', gap: '6px' }}>
+                                    <span style={{ color: 'var(--accent-blue)' }}>•</span>
+                                    <span>{a}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          <div className="font-mono" style={{ fontSize: '1.15rem', fontWeight: 800, margin: '8px 0', color: 'var(--accent-blue)' }}>
-                            {sc.target_range}
-                          </div>
-                          <ul style={{ paddingLeft: '16px', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {sc.catalysts?.map((c, cIdx) => <li key={cIdx}>{c}</li>)}
-                          </ul>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Risks & Limitations */}
-              {risks.length > 0 && (
-                <div className="glass-card" style={{ padding: '16px 20px', borderLeft: '3px solid #f59e0b' }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                    <AlertTriangle size={15} /> Business Risks & Model Disclosures
-                  </div>
-                  <ul style={{ paddingLeft: '18px', fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {risks.map((r, idx) => <li key={idx}>{r}</li>)}
-                  </ul>
-                </div>
-              )}
-
-              {/* Sources */}
-              {sources.length > 0 && (
-                <div className="glass-card" style={{ padding: '14px 20px', background: 'rgba(10, 14, 23, 0.6)' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>
-                    Audited Source Attribution
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                    {sources.map((src, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          fontSize: '0.75rem',
-                          background: 'rgba(255, 255, 255, 0.04)',
-                          padding: '6px 12px',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--border-subtle)'
-                        }}
-                      >
-                        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{src.metric}: </span>
-                        <span className="font-mono" style={{ color: 'var(--accent-blue)' }}>{String(src.value ?? '')}</span>
-                        <span style={{ color: 'var(--text-muted)' }}> via {src.source}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Disclaimer */}
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center', padding: '10px 0' }}>
-                {researchData.disclaimer}
+              {/* Educational Notice */}
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
+                Educational equity research intelligence based on audited exchange disclosures. Not SEBI-registered financial advice. Does not provide direct buy, sell, or hold instructions.
               </div>
             </>
           )}
+        </div>
+      )}
+      </div>
+
+      {/* Right Column: AI Stock Research Side Panel */}
+      <div className="section-side-column">
+        <AISidePanel
+          section="stocks"
+          currentSymbol={selectedStockForAI}
+          allStocks={stocks}
+          onSelectStock={(sym) => {
+            setSelectedStockForAI(sym);
+            setResearchSymbol(sym);
+            if (onSelectStock) onSelectStock(sym);
+          }}
+        />
+      </div>
+
+      {/* Mobile Floating Button */}
+      <button
+        onClick={() => setMobileDrawerOpen(true)}
+        className="ai-mobile-floating-btn"
+        title="Open AI Stock Research Agent"
+      >
+        <Sparkles size={16} /> AI Stock Agent ({selectedStockForAI})
+      </button>
+
+      {/* Mobile Drawer Overlay */}
+      {mobileDrawerOpen && (
+        <div className="ai-mobile-drawer-overlay" onClick={() => setMobileDrawerOpen(false)}>
+          <div className="ai-mobile-drawer-content" onClick={(e) => e.stopPropagation()}>
+            <AISidePanel
+              section="stocks"
+              currentSymbol={selectedStockForAI}
+              allStocks={stocks}
+              isMobile={true}
+              onToggleOpen={() => setMobileDrawerOpen(false)}
+              onSelectStock={(sym) => {
+                setSelectedStockForAI(sym);
+                setResearchSymbol(sym);
+                if (onSelectStock) onSelectStock(sym);
+              }}
+            />
+          </div>
         </div>
       )}
     </div>

@@ -14,11 +14,14 @@ import {
   ChevronRight,
   TrendingUp,
   TrendingDown,
-  CheckCircle2
+  CheckCircle2,
+  MessageSquare
 } from 'lucide-react';
+import AISidePanel from '../components/AISidePanel';
 
 export default function AIInsightsView({ allStocks = [], onSelectStock }) {
   const [subTab, setSubTab] = useState('orchestrator'); // 'orchestrator' | 'market' | 'stock' | 'portfolio' | 'behavior'
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   
   // Orchestrator state
   const [orchestratorStock, setOrchestratorStock] = useState('RELIANCE');
@@ -103,79 +106,81 @@ export default function AIInsightsView({ allStocks = [], onSelectStock }) {
   const keyRisks = orchestrationResult?.key_risks || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}>
-      {/* Header Banner */}
-      <div
-        className="glass-card"
-        style={{
-          padding: '24px',
-          background: 'linear-gradient(135deg, rgba(20, 28, 46, 0.95) 0%, rgba(31, 43, 69, 0.8) 100%)',
-          border: '1px solid rgba(59, 130, 246, 0.3)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Sparkles size={22} color="#ffffff" />
+    <div className="section-layout-wrapper" style={{ paddingBottom: '40px' }}>
+      {/* Left Column: Multi-Agent Analysis Content */}
+      <div className="section-main-column">
+        {/* Header Banner */}
+        <div
+          className="glass-card"
+          style={{
+            padding: '24px',
+            background: 'linear-gradient(135deg, rgba(20, 28, 46, 0.95) 0%, rgba(31, 43, 69, 0.8) 100%)',
+            border: '1px solid rgba(59, 130, 246, 0.3)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+            <div
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Sparkles size={22} color="#ffffff" />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: 800 }}>AI Intelligence & Multi-Agent Orchestration Hub</h2>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                Central orchestrator coordinating Market Analysis, Financial Research, Portfolio Risk, and Trading Behavior agents
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 style={{ fontSize: '1.3rem', fontWeight: 800 }}>AI Intelligence & Multi-Agent Orchestration Hub</h2>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Central orchestrator coordinating Market Analysis, Financial Research, Portfolio Risk, and Trading Behavior agents
-            </p>
+
+          {/* Sub-tab Navigation */}
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px', marginTop: '14px' }}>
+            <button
+              onClick={() => { setSubTab('orchestrator'); if (!orchestrationResult) handleRunOrchestration(); }}
+              className={`btn btn-secondary ${subTab === 'orchestrator' ? 'badge-fresh' : ''}`}
+              style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+            >
+              <Sparkles size={14} /> Multi-Agent Orchestrator
+            </button>
+            <button
+              onClick={() => { setSubTab('market'); if (!marketAnalysis) handleFetchMarketPulse(); }}
+              className={`btn btn-secondary ${subTab === 'market' ? 'badge-fresh' : ''}`}
+              style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+            >
+              <Activity size={14} /> Market Analysis Agent
+            </button>
+            <button
+              onClick={() => { setSubTab('stock'); if (!stockResearch) handleFetchStockResearch(); }}
+              className={`btn btn-secondary ${subTab === 'stock' ? 'badge-fresh' : ''}`}
+              style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+            >
+              <Search size={14} /> Financial Research Agent
+            </button>
+            <button
+              onClick={() => { setSubTab('portfolio'); if (!portfolioAudit) handleFetchPortfolioAudit(); }}
+              className={`btn btn-secondary ${subTab === 'portfolio' ? 'badge-fresh' : ''}`}
+              style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+            >
+              <PieChart size={14} /> Portfolio Analysis Agent
+            </button>
+            <button
+              onClick={() => { setSubTab('behavior'); if (!behaviorAudit) handleFetchBehaviorAudit(); }}
+              className={`btn btn-secondary ${subTab === 'behavior' ? 'badge-fresh' : ''}`}
+              style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+            >
+              <Brain size={14} /> Trading Behavior Agent
+            </button>
           </div>
         </div>
 
-        {/* Sub-tab Navigation (History tab strictly removed per requirement 1.E) */}
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px', marginTop: '14px' }}>
-          <button
-            onClick={() => { setSubTab('orchestrator'); if (!orchestrationResult) handleRunOrchestration(); }}
-            className={`btn btn-secondary ${subTab === 'orchestrator' ? 'badge-fresh' : ''}`}
-            style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-          >
-            <Sparkles size={14} /> Multi-Agent Orchestrator
-          </button>
-          <button
-            onClick={() => { setSubTab('market'); if (!marketAnalysis) handleFetchMarketPulse(); }}
-            className={`btn btn-secondary ${subTab === 'market' ? 'badge-fresh' : ''}`}
-            style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-          >
-            <Activity size={14} /> Market Analysis Agent
-          </button>
-          <button
-            onClick={() => { setSubTab('stock'); if (!stockResearch) handleFetchStockResearch(); }}
-            className={`btn btn-secondary ${subTab === 'stock' ? 'badge-fresh' : ''}`}
-            style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-          >
-            <Search size={14} /> Financial Research Agent
-          </button>
-          <button
-            onClick={() => { setSubTab('portfolio'); if (!portfolioAudit) handleFetchPortfolioAudit(); }}
-            className={`btn btn-secondary ${subTab === 'portfolio' ? 'badge-fresh' : ''}`}
-            style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-          >
-            <PieChart size={14} /> Portfolio Analysis Agent
-          </button>
-          <button
-            onClick={() => { setSubTab('behavior'); if (!behaviorAudit) handleFetchBehaviorAudit(); }}
-            className={`btn btn-secondary ${subTab === 'behavior' ? 'badge-fresh' : ''}`}
-            style={{ fontSize: '0.8rem', padding: '6px 14px' }}
-          >
-            <Brain size={14} /> Trading Behavior Agent
-          </button>
-        </div>
-      </div>
-
-      {/* --- SUBTAB: CENTRAL MULTI-AGENT ORCHESTRATOR --- */}
+        {/* --- SUBTAB: CENTRAL MULTI-AGENT ORCHESTRATOR --- */}
       {subTab === 'orchestrator' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Orchestrator Controls */}
@@ -563,6 +568,50 @@ export default function AIInsightsView({ allStocks = [], onSelectStock }) {
                 </div>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+      </div>
+
+      {/* Right Column: AI Research Side Panel */}
+      <div className="section-side-column">
+        <AISidePanel
+          section="ai"
+          currentSymbol={orchestratorStock}
+          allStocks={allStocks}
+          onSelectStock={(sym) => {
+            setOrchestratorStock(sym);
+            setSelectedStockSymbol(sym);
+            if (onSelectStock) onSelectStock(sym);
+          }}
+        />
+      </div>
+
+      {/* Mobile Floating Button */}
+      <button
+        onClick={() => setMobileDrawerOpen(true)}
+        className="ai-mobile-floating-btn"
+        title="Open AI Research Assistant"
+      >
+        <Sparkles size={16} /> AI Research Agent
+      </button>
+
+      {/* Mobile Drawer Overlay */}
+      {mobileDrawerOpen && (
+        <div className="ai-mobile-drawer-overlay" onClick={() => setMobileDrawerOpen(false)}>
+          <div className="ai-mobile-drawer-content" onClick={(e) => e.stopPropagation()}>
+            <AISidePanel
+              section="ai"
+              currentSymbol={orchestratorStock}
+              allStocks={allStocks}
+              isMobile={true}
+              onToggleOpen={() => setMobileDrawerOpen(false)}
+              onSelectStock={(sym) => {
+                setOrchestratorStock(sym);
+                setSelectedStockSymbol(sym);
+                if (onSelectStock) onSelectStock(sym);
+              }}
+            />
           </div>
         </div>
       )}

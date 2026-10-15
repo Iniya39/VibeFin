@@ -209,10 +209,117 @@ class YFinanceProvider(MarketDataProvider):
                     rev_dict = {}
                     for k in key_rows:
                         if k in income.index:
-                            rev_dict[k] = [safe_float(v) for v in income.loc[k][:3]]
+                            row_vals = income.loc[k]
+                            if hasattr(row_vals, "iloc"):
+                                if len(getattr(row_vals, "shape", ())) > 1:
+                                    row_vals = row_vals.iloc[0]
+                                vals = [safe_float(v) for v in row_vals.iloc[:3]]
+                            else:
+                                vals = [safe_float(v) for v in row_vals[:3]]
+                            rev_dict[k] = vals
                     statements_summary["income_metrics"] = rev_dict
             except Exception:
                 pass
+
+            # Balance sheet metrics & Debt-to-Equity validation
+            balance_sheet_debt = None
+            balance_sheet_equity = None
+            balance_sheet_period = None
+            capital_leases = None
+            calculated_de = None
+            debt_classification = "Unable to Verify"
+            debt_notes = None
+
+            try:
+                bs = ticker.balance_sheet
+                if bs is not None and not bs.empty:
+                    bs_cols = [str(c)[:10] for c in bs.columns[:2]]
+                    if bs_cols:
+                        balance_sheet_period = bs_cols[0]
+                    
+                    if "Total Debt" in bs.index:
+                        row = bs.loc["Total Debt"]
+                        balance_sheet_debt = safe_float(row.iloc[0] if hasattr(row, "iloc") else row[0])
+                    elif "Long Term Debt" in bs.index or "Current Debt" in bs.index:
+                        lt = safe_float(bs.loc["Long Term Debt"].iloc[0]) if "Long Term Debt" in bs.index and hasattr(bs.loc["Long Term Debt"], "iloc") else 0.0
+                        st = safe_float(bs.loc["Current Debt"].iloc[0]) if "Current Debt" in bs.index and hasattr(bs.loc["Current Debt"], "iloc") else 0.0
+                        balance_sheet_debt = (lt or 0.0) + (st or 0.0)
+
+                    if "Capital Lease Obligations" in bs.index:
+                        row_cl = bs.loc["Capital Lease Obligations"]
+                        capital_leases = safe_float(row_cl.iloc[0] if hasattr(row_cl, "iloc") else row_cl[0])
+
+                    if "Stockholders Equity" in bs.index:
+                        row_eq = bs.loc["Stockholders Equity"]
+                        balance_sheet_equity = safe_float(row_eq.iloc[0] if hasattr(row_eq, "iloc") else row_eq[0])
+                    elif "Common Stock Equity" in bs.index:
+                        row_eq = bs.loc["Common Stock Equity"]
+                        balance_sheet_equity = safe_float(row_eq.iloc[0] if hasattr(row_eq, "iloc") else row_eq[0])
+
+                    if balance_sheet_debt is not None and balance_sheet_equity is not None:
+                        if balance_sheet_equity > 0:
+                            calculated_de = round(balance_sheet_debt / balance_sheet_equity, 3)
+                        elif balance_sheet_equity <= 0:
+                            calculated_de = None
+                            debt_classification = "Data Inconsistency Detected"
+                            debt_notes = "Negative or zero shareholders' equity reported on balance sheet."
+            except Exception as bs_err:
+                logger.debug(f"Could not load balance sheet for {provider_symbol}: {bs_err}")
+
+            raw_info_de = safe_float(info.get("debtToEquity"))
+            normalized_info_de = None
+            if raw_info_de is not None:
+                # Yahoo Finance reports debtToEquity as a percentage (e.g. 9.83 = 9.83%)
+                normalized_info_de = round(raw_info_de / 100.0, 3)
+
+            final_de = calculated_de if calculated_de is not None else normalized_info_de
+
+            sec_name = (info.get("sector") or "").lower()
+            is_bank_or_fin = "bank" in sec_name or "financial" in sec_name
+            is_utility_infra = "utility" in sec_name or "utilities" in sec_name or "infrastructure" in sec_name or "energy" in sec_name
+
+            if is_bank_or_fin:
+                debt_classification = "Banking Capital Adequacy Context"
+                debt_notes = "Commercial banks & financial institutions operate on customer deposit leverage; standard D/E ratio is not a distress indicator."
+            elif final_de is not None:
+                if is_utility_infra:
+                    if final_de < 1.0:
+                        debt_classification = "Low Debt Concern"
+                    elif final_de <= 2.5:
+                        debt_classification = "Moderate Debt Concern"
+                    else:
+                        debt_classification = "High Debt Concern"
+                else:
+                    if final_de < 0.5:
+                        debt_classification = "Low Debt Concern"
+                    elif final_de <= 1.5:
+                        debt_classification = "Moderate Debt Concern"
+                    else:
+                        debt_classification = "High Debt Concern"
+
+                notes_parts = []
+                if balance_sheet_debt is not None and balance_sheet_equity is not None:
+                    notes_parts.append(f"Balance sheet verified ({balance_sheet_period or 'Latest'}): Total Debt ₹{balance_sheet_debt/1e7:,.1f} Cr / Equity ₹{balance_sheet_equity/1e7:,.1f} Cr = {final_de:.2f}x.")
+                if capital_leases:
+                    notes_parts.append(f"Includes ₹{capital_leases/1e7:,.1f} Cr capital lease liabilities under Ind AS 116.")
+                debt_notes = " ".join(notes_parts) if notes_parts else f"Ratio verified from trailing disclosures: {final_de:.2f}x."
+            else:
+                debt_classification = "Unable to Verify"
+                debt_notes = "Debt or equity metrics not disclosed in provider feed."
+
+            # Sanitize dividend yield and RoE
+            raw_div = safe_float(info.get("dividendYield"))
+            val_div = None
+            if raw_div is not None:
+                if 0.0 < raw_div < 0.20:
+                    val_div = round(raw_div * 100.0, 2)
+                elif 0.20 <= raw_div <= 25.0:
+                    val_div = round(raw_div, 2)
+
+            raw_roe = safe_float(info.get("returnOnEquity"))
+            val_roe = None
+            if raw_roe is not None:
+                val_roe = raw_roe if raw_roe < 2.0 else raw_roe / 100.0
 
             return Fundamentals(
                 symbol=symbol,
@@ -223,12 +330,19 @@ class YFinanceProvider(MarketDataProvider):
                 market_cap=safe_float(info.get("marketCap")),
                 pe_ratio=safe_float(info.get("trailingPE")),
                 pb_ratio=safe_float(info.get("priceToBook")),
-                dividend_yield=safe_float(info.get("dividendYield")),
+                dividend_yield=val_div,
                 eps=safe_float(info.get("trailingEps")),
                 high_52w=safe_float(info.get("fiftyTwoWeekHigh")),
                 low_52w=safe_float(info.get("fiftyTwoWeekLow")),
-                roe=safe_float(info.get("returnOnEquity")),
-                debt_to_equity=safe_float(info.get("debtToEquity")),
+                roe=val_roe,
+                debt_to_equity=final_de,
+                balance_sheet_debt=balance_sheet_debt,
+                balance_sheet_equity=balance_sheet_equity,
+                balance_sheet_period=balance_sheet_period,
+                capital_lease_obligations=capital_leases,
+                debt_to_equity_ratio=final_de,
+                debt_classification=debt_classification,
+                debt_validation_notes=debt_notes,
                 business_summary=info.get("longBusinessSummary"),
                 financial_statements=statements_summary if statements_summary else None,
                 source=self.source_label,

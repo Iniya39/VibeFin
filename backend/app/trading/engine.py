@@ -1,5 +1,6 @@
 import uuid
 import logging
+import sqlite3
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from app.core.database import get_db
@@ -16,8 +17,8 @@ class TradingEngine:
     idempotency enforcement, cash ledger audit trail, and average acquisition cost accounting.
     """
 
-    def get_or_create_account(self, user_id: str) -> Dict[str, Any]:
-        with get_db() as conn:
+    def get_or_create_account(self, user_id: str, conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
+        if conn is not None:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM paper_trading_accounts WHERE user_id = ?", (user_id,))
             account = cursor.fetchone()
@@ -43,6 +44,9 @@ class TradingEngine:
                 account = cursor.fetchone()
                 
             return dict(account)
+        else:
+            with get_db() as c:
+                return self.get_or_create_account(user_id, conn=c)
 
     def place_order(
         self,
@@ -356,7 +360,7 @@ class TradingEngine:
         """Reset virtual balance to initial ₹10,00,000 and clear holdings."""
         with get_db() as conn:
             cursor = conn.cursor()
-            account = self.get_or_create_account(user_id)
+            account = self.get_or_create_account(user_id, conn=conn)
             account_id = account["id"]
             now_iso = datetime.now(timezone.utc).isoformat()
             initial_balance = settings.DEFAULT_STARTING_BALANCE
@@ -390,7 +394,7 @@ class TradingEngine:
         
         with get_db() as conn:
             cursor = conn.cursor()
-            account = self.get_or_create_account(user_id)
+            account = self.get_or_create_account(user_id, conn=conn)
             account_id = account["id"]
             current_bal = float(account["virtual_balance"] or 0.0)
             new_balance = round(current_bal + amount, 2)
@@ -419,7 +423,7 @@ class TradingEngine:
 
         with get_db() as conn:
             cursor = conn.cursor()
-            account = self.get_or_create_account(user_id)
+            account = self.get_or_create_account(user_id, conn=conn)
             account_id = account["id"]
             current_bal = float(account["virtual_balance"] or 0.0)
             if current_bal < amount:

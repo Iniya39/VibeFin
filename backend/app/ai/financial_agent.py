@@ -73,13 +73,32 @@ class FinancialResearchAgent:
             roe_val = None
             missing.append("Return on Equity")
 
-        if debt_to_equity is not None:
-            # yfinance d/e is usually 0-100 or ratio
+        de_val = getattr(fundamentals, 'debt_to_equity_ratio', None)
+        if de_val is None and debt_to_equity is not None:
             de_val = round(debt_to_equity / 100, 2) if debt_to_equity > 10 else round(debt_to_equity, 2)
-            verified_metrics.append({"metric": "Debt-to-Equity", "value": de_val, "status": "Verified (Latest Balance Sheet)"})
+
+        debt_classification = getattr(fundamentals, 'debt_classification', None)
+        if not debt_classification:
+            if de_val is not None:
+                if de_val <= 1.0:
+                    debt_classification = "Low Debt Concern"
+                elif de_val <= 2.0:
+                    debt_classification = "Moderate Debt Concern"
+                else:
+                    debt_classification = "High Debt Concern"
+            else:
+                debt_classification = "Unable to Verify"
+
+        if de_val is not None:
+            verified_metrics.append({"metric": "Debt-to-Equity", "value": f"{de_val:.2f}x ({debt_classification})", "status": "Verified (Balance Sheet)"})
         else:
-            de_val = None
-            estimated_metrics.append({"metric": "Debt-to-Equity", "value": "Estimated < 0.8x for sector average", "status": "Estimated"})
+            estimated_metrics.append({"metric": "Debt-to-Equity", "value": f"{debt_classification}", "status": "Estimated / Pending Filing"})
+
+        if dividend_yield is not None:
+            div_yield_val = dividend_yield * 100 if dividend_yield < 1.0 else dividend_yield
+            verified_metrics.append({"metric": "Dividend Yield", "value": f"{round(div_yield_val, 2)}%", "status": "Verified"})
+        else:
+            div_yield_val = None
 
         # Margins & Cash flow estimates
         statements = fundamentals.financial_statements or {}
@@ -118,8 +137,8 @@ class FinancialResearchAgent:
                 val_verdict = "Fairly Valued"
 
         if de_val is not None and de_val > 2.0:
-            warnings.append(f"Elevated Leverage: Debt-to-Equity is {de_val:.2f}x.")
-            risks.append("Interest rate sensitivity and debt repayment obligations.")
+            warnings.append(f"Elevated Leverage: Debt-to-Equity is {de_val:.2f}x ({debt_classification}).")
+            risks.append("Interest rate sensitivity and debt repayment obligations under elevated leverage.")
         elif de_val is not None and de_val < 0.5:
             val_score += 1
 
@@ -143,14 +162,15 @@ class FinancialResearchAgent:
             f"{meta['name']} ({symbol}) operates in the {meta['sector_name']} sector ({meta['subsector']}). "
             f"Trading at ₹{current_price or 'N/A'}, fundamental status is classified as '{overall_signal}' "
             f"with trailing P/E of {pe_ratio or 'N/A'}" + (f" ({val_verdict})" if pe_ratio else "") +
-            f", RoE of {roe_val or 'N/A'}%, and Debt-to-Equity of {de_val if de_val is not None else 'N/A'}x."
+            f", RoE of {roe_val or 'N/A'}%, and Debt-to-Equity of {f'{de_val:.2f}x' if de_val is not None else 'N/A'} "
+            f"({debt_classification})."
         )
 
         key_findings = [
             f"Sector positioning: Established large/mid-cap footprint in {meta['sector_name']} on NSE.",
             f"Valuation profile: P/E stands at {pe_ratio or 'N/A'}x vs sector median with P/B of {pb_ratio or 'N/A'}x.",
             f"Capital return: RoE measured at {f'{roe_val:.1f}%' if roe_val else 'Sector average'} reflecting return on shareholder equity.",
-            f"Balance sheet solvency: Debt-to-Equity ratio of {f'{de_val:.2f}x' if de_val is not None else 'under 1.0x (prudent)'}.",
+            f"Balance sheet solvency: Debt-to-Equity ratio of {f'{de_val:.2f}x' if de_val is not None else 'N/A'} ({debt_classification}).",
         ]
 
         if revenue_growth_pct is not None:
@@ -169,7 +189,7 @@ class FinancialResearchAgent:
             {
                 "title": f"Board Meeting & Dividend / Corporate Action Notice",
                 "date": "Annual Regulatory Filing",
-                "summary": f"Dividend yield tracked at {round(dividend_yield * 100, 2) if dividend_yield else '1.2'}% with ongoing capital allocation disclosures.",
+                "summary": f"Dividend yield tracked at {round(div_yield_val, 2) if div_yield_val else '1.2'}% with ongoing capital allocation disclosures.",
                 "source": "BSE/NSE Shareholding & Corporate Actions"
             }
         ]
@@ -195,36 +215,65 @@ class FinancialResearchAgent:
             ]
         }
 
-        # Scenarios
-        scenarios = [
-            Scenario(
-                case="Bullish",
-                target_range=f"₹{round(current_price * 1.18, 1) if current_price else 'N/A'}",
-                probability_assessment="Moderate (~35%)",
-                catalysts=[
-                    "Margin expansion exceeding 150 bps through operational leverage.",
-                    "Sustained quarterly earnings beats driving institutional inflows."
-                ]
-            ),
-            Scenario(
-                case="Base",
-                target_range=f"₹{round(current_price * 1.05, 1) if current_price else 'N/A'}",
-                probability_assessment="High (~50%)",
-                catalysts=[
-                    "Steady revenue growth in line with nominal GDP and sector benchmarks.",
-                    "Stable dividend payouts and consistent return on capital."
-                ]
-            ),
-            Scenario(
-                case="Bearish",
-                target_range=f"₹{round(current_price * 0.88, 1) if current_price else 'N/A'}",
-                probability_assessment="Low-Moderate (~15%)",
-                catalysts=[
-                    "Raw material cost escalation contracting operating margins.",
-                    "Systemic equity market valuation derating."
-                ]
-            )
-        ]
+        # Dynamic Model-Estimated Scenarios
+        scenarios = []
+        if current_price:
+            bull_target = round(current_price * 1.15, 2)
+            base_target = round(current_price * 1.05, 2)
+            bear_target = round(current_price * 0.88, 2)
+            scenarios = [
+                Scenario(
+                    case="Bullish",
+                    target_price=bull_target,
+                    target_range=f"₹{round(current_price * 1.12, 2):,.2f} – ₹{round(current_price * 1.18, 2):,.2f}",
+                    implied_change_pct=15.0,
+                    probability_assessment="Moderate (~35%)",
+                    assumptions=[
+                        "Operating margin expansion >150 bps through operational leverage",
+                        "Sustained quarterly profit beats supporting valuation multiples",
+                        "Favorable institutional domestic mutual fund and FII inflows"
+                    ],
+                    catalysts=[
+                        "Margin expansion exceeding 150 bps through operational leverage.",
+                        "Sustained quarterly earnings beats driving institutional inflows."
+                    ],
+                    label="Model-Estimated Scenario"
+                ),
+                Scenario(
+                    case="Base",
+                    target_price=base_target,
+                    target_range=f"₹{round(current_price * 1.02, 2):,.2f} – ₹{round(current_price * 1.08, 2):,.2f}",
+                    implied_change_pct=5.0,
+                    probability_assessment="High (~50%)",
+                    assumptions=[
+                        "Revenue growth tracks nominal GDP and industry baseline (~8-12%)",
+                        "Stable return on equity and disciplined capital reinvestment",
+                        "Valuation multiples remain anchored to 3-year historical median"
+                    ],
+                    catalysts=[
+                        "Steady revenue growth in line with nominal GDP and sector benchmarks.",
+                        "Stable dividend payouts and consistent return on capital."
+                    ],
+                    label="Model-Estimated Scenario"
+                ),
+                Scenario(
+                    case="Bearish",
+                    target_price=bear_target,
+                    target_range=f"₹{round(current_price * 0.85, 2):,.2f} – ₹{round(current_price * 0.92, 2):,.2f}",
+                    implied_change_pct=-12.0,
+                    probability_assessment="Low-Moderate (~15%)",
+                    assumptions=[
+                        "Input cost inflation contracting operating margins by >150 bps",
+                        "Quarterly earnings shortfall prompting valuation derating",
+                        "Systemic equity market risk-off sentiment or sector rotation"
+                    ],
+                    catalysts=[
+                        "Raw material cost escalation contracting operating margins.",
+                        "Systemic equity market valuation derating."
+                    ],
+                    label="Model-Estimated Scenario"
+                )
+            ]
 
         # Citations
         citations = [
@@ -284,7 +333,9 @@ class FinancialResearchAgent:
             "eps": eps,
             "roe": roe_val,
             "debt_to_equity": de_val,
-            "dividend_yield": dividend_yield,
+            "debt_classification": debt_classification,
+            "balance_sheet_debt": getattr(fundamentals, 'balance_sheet_debt', None),
+            "dividend_yield": div_yield_val if div_yield_val is not None else dividend_yield,
             "revenue_growth_pct": revenue_growth_pct,
             "net_profit_margin_pct": net_profit_margin_pct,
             "valuation_verdict": val_verdict,
@@ -317,7 +368,7 @@ class FinancialResearchAgent:
             },
             missing_data=missing,
             warnings=warnings,
-            disclaimer="Simulated corporate research intelligence. Based on public exchange filings. Not financial advice."
+            disclaimer="Educational financial research intelligence based on public exchange disclosures. Not SEBI-registered financial advice. Does not constitute a buy, sell, or hold recommendation."
         )
 
 financial_research_agent = FinancialResearchAgent()

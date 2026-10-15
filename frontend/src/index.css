@@ -291,3 +291,96 @@ body {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Two-Column Section with AI Side Panel */
+.section-layout-wrapper {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  position: relative;
+  width: 100%;
+}
+
+.section-main-column {
+  flex: 1;
+  min-width: 0; /* Prevents overflow/horizontal scrolling */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.section-side-column {
+  width: 390px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 24px;
+}
+
+/* Mobile & Tablet Responsive AI Drawer */
+@media (max-width: 1024px) {
+  .section-layout-wrapper {
+    flex-direction: column;
+  }
+  .section-side-column {
+    display: none; /* Hidden from inline flow on tablet/mobile; accessible via mobile toggle drawer */
+  }
+}
+
+.ai-mobile-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 999;
+  display: flex;
+  justify-content: flex-end;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.ai-mobile-drawer-content {
+  width: 100%;
+  max-width: 440px;
+  height: 100%;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-lg);
+  animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.ai-mobile-floating-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 900;
+  padding: 12px 18px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.45);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.ai-mobile-floating-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(37, 99, 235, 0.6);
+}
+
+@media (max-width: 1024px) {
+  .ai-mobile-floating-btn {
+    display: flex;
+  }
+}
+

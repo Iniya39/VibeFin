@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import init_db, seed_master_data
 from app.market_data.scheduler import start_market_scheduler
+from app.core.utils import SafeJSONResponse
 from app.api.v1.auth import router as auth_router
 from app.api.v1.users import router as users_router
 from app.api.v1.stocks import router as stocks_router
@@ -49,7 +50,8 @@ app = FastAPI(
     - AI-powered macro market pulse, company deep research, portfolio concentration risk audit, and behavioral trading analytics.
     """,
     version=settings.VERSION,
-    lifespan=lifespan
+    lifespan=lifespan,
+    default_response_class=SafeJSONResponse
 )
 
 # Enable CORS
@@ -70,6 +72,18 @@ app.include_router(watchlists_router, prefix=settings.API_V1_STR)
 app.include_router(trading_router, prefix=settings.API_V1_STR)
 app.include_router(portfolio_router, prefix=settings.API_V1_STR)
 app.include_router(ai_router, prefix=settings.API_V1_STR)
+
+@app.get("/")
+def root():
+    return {
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "status": "online",
+        "message": "VibeFinance Backend API is operational.",
+        "frontend_app": "http://localhost:5173",
+        "api_documentation": "http://127.0.0.1:8000/docs",
+        "health_check": "http://127.0.0.1:8000/health"
+    }
 
 @app.get("/health")
 def health_check():

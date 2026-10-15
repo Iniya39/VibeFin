@@ -46,6 +46,13 @@ class Fundamentals(BaseModel):
     low_52w: Optional[float] = None
     roe: Optional[float] = None
     debt_to_equity: Optional[float] = None
+    balance_sheet_debt: Optional[float] = None
+    balance_sheet_equity: Optional[float] = None
+    balance_sheet_period: Optional[str] = None
+    capital_lease_obligations: Optional[float] = None
+    debt_to_equity_ratio: Optional[float] = None
+    debt_classification: Optional[str] = None
+    debt_validation_notes: Optional[str] = None
     business_summary: Optional[str] = None
     financial_statements: Optional[Dict[str, Any]] = None
     source: str = "Yahoo Finance via yfinance"

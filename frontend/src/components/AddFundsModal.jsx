@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import {
   Wallet,
@@ -19,6 +19,11 @@ export default function AddFundsModal({ isOpen, onClose, currentBalance = 0, onF
   const [paymentMethod, setPaymentMethod] = useState('UPI (Google Pay / PhonePe)');
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null); // { type: 'success'|'error', text }
+  const [displayBalance, setDisplayBalance] = useState(currentBalance);
+
+  useEffect(() => {
+    setDisplayBalance(currentBalance);
+  }, [currentBalance]);
 
   if (!isOpen) return null;
 
@@ -37,10 +42,10 @@ export default function AddFundsModal({ isOpen, onClose, currentBalance = 0, onF
       return;
     }
 
-    if (activeTab === 'withdraw' && num > currentBalance) {
+    if (activeTab === 'withdraw' && num > (displayBalance || currentBalance)) {
       setStatusMessage({
         type: 'error',
-        text: `Insufficient funds. Maximum withdrawable amount is ₹${currentBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+        text: `Insufficient funds. Maximum withdrawable amount is ₹${(displayBalance || currentBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
       });
       return;
     }
@@ -51,24 +56,46 @@ export default function AddFundsModal({ isOpen, onClose, currentBalance = 0, onF
     try {
       if (activeTab === 'deposit') {
         const res = await api.trading.depositFunds(num, paymentMethod);
+        const newBal = (res && typeof res.virtual_balance === 'number')
+          ? res.virtual_balance
+          : ((displayBalance || currentBalance) + num);
+
+        // Immediately update modal balance display
+        setDisplayBalance(newBal);
+
+        // Immediately update global app balance and views
+        if (onFundsUpdated) {
+          onFundsUpdated(newBal);
+        }
+
         setStatusMessage({
           type: 'success',
-          text: res.message || `Successfully added ₹${num.toLocaleString('en-IN')} to your trading buying power!`
+          text: res?.message || `Successfully added ₹${num.toLocaleString('en-IN')} to your trading buying power!`
         });
-        if (onFundsUpdated) onFundsUpdated(res.virtual_balance);
+
         setTimeout(() => {
           onClose();
-        }, 1200);
+        }, 750);
       } else {
         const res = await api.trading.withdrawFunds(num, paymentMethod);
+        const newBal = (res && typeof res.virtual_balance === 'number')
+          ? res.virtual_balance
+          : Math.max(0, (displayBalance || currentBalance) - num);
+
+        setDisplayBalance(newBal);
+
+        if (onFundsUpdated) {
+          onFundsUpdated(newBal);
+        }
+
         setStatusMessage({
           type: 'success',
-          text: res.message || `Successfully withdrew ₹${num.toLocaleString('en-IN')} from your virtual cash.`
+          text: res?.message || `Successfully withdrew ₹${num.toLocaleString('en-IN')} from your virtual cash.`
         });
-        if (onFundsUpdated) onFundsUpdated(res.virtual_balance);
+
         setTimeout(() => {
           onClose();
-        }, 1200);
+        }, 750);
       }
     } catch (err) {
       setStatusMessage({
@@ -227,7 +254,7 @@ export default function AddFundsModal({ isOpen, onClose, currentBalance = 0, onF
             <div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Current Buying Power</div>
               <div className="font-mono" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
-                ₹{currentBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ₹{(displayBalance !== undefined ? displayBalance : currentBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </div>
             <span className="badge bg-gain" style={{ fontSize: '0.72rem', padding: '4px 8px' }}>

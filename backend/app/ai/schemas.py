@@ -11,9 +11,13 @@ class Citation(BaseModel):
 
 class Scenario(BaseModel):
     case: str              # 'Bullish' | 'Base' | 'Bearish'
+    target_price: Optional[float] = None
     target_range: Optional[str] = None
+    implied_change_pct: Optional[float] = None
     probability_assessment: Optional[str] = None
     catalysts: List[str] = Field(default_factory=list)
+    assumptions: List[str] = Field(default_factory=list)
+    label: str = "Model-Estimated Scenario"
 
 class AgentResponse(BaseModel):
     agent_name: str

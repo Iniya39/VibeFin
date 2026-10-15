@@ -17,9 +17,18 @@ import {
   Layers,
   ArrowRight
 } from 'lucide-react';
+import AISidePanel from '../components/AISidePanel';
 
-export default function PortfolioView({ onSelectStock, onOpenOrder, onResetBalance, onOpenAddFunds }) {
+export default function PortfolioView({
+  onSelectStock,
+  onOpenOrder,
+  onResetBalance,
+  onOpenAddFunds,
+  virtualBalance,
+  onFundsUpdated
+}) {
   const [activeSubTab, setActiveSubTab] = useState('holdings'); // 'holdings' | 'agent'
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [portfolioData, setPortfolioData] = useState(null);
   const [allocationData, setAllocationData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +70,7 @@ export default function PortfolioView({ onSelectStock, onOpenOrder, onResetBalan
 
   useEffect(() => {
     loadPortfolio();
-  }, []);
+  }, [virtualBalance]);
 
   useEffect(() => {
     if (activeSubTab === 'agent' && !agentData) {
@@ -73,6 +82,13 @@ export default function PortfolioView({ onSelectStock, onOpenOrder, onResetBalan
   const holdings = portfolioData?.holdings || [];
   const sectorAlloc = allocationData?.sector_allocation || [];
 
+  const effectiveCash = (virtualBalance !== undefined && virtualBalance !== null)
+    ? Number(virtualBalance)
+    : Number(summary.available_cash ?? 1000000);
+
+  const marketVal = Number(summary.total_market_value || 0);
+  const totalWealth = marketVal + effectiveCash;
+
   const isUnrealizedUp = (summary.unrealized_pnl || 0) >= 0;
   const isOverallUp = (summary.total_pnl || 0) >= 0;
 
@@ -83,8 +99,10 @@ export default function PortfolioView({ onSelectStock, onOpenOrder, onResetBalan
   const rebalancingSuggestions = agentSupporting.rebalancing_suggestions || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '40px' }}>
-      {/* Portfolio Header Bar */}
+    <div className="section-layout-wrapper" style={{ paddingBottom: '40px' }}>
+      {/* Left Column: Portfolio Content */}
+      <div className="section-main-column">
+        {/* Portfolio Header Bar */}
       <div
         className="glass-card"
         style={{
@@ -181,7 +199,7 @@ export default function PortfolioView({ onSelectStock, onOpenOrder, onResetBalan
             <div className="glass-card" style={{ padding: '16px' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>TOTAL WEALTH</span>
               <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '4px' }}>
-                ₹{summary.total_portfolio_wealth ? summary.total_portfolio_wealth.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '10,00,000.00'}
+                ₹{totalWealth.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Invested + Virtual Cash</span>
             </div>
@@ -197,7 +215,7 @@ export default function PortfolioView({ onSelectStock, onOpenOrder, onResetBalan
             <div className="glass-card" style={{ padding: '16px' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>AVAILABLE CASH</span>
               <div className="font-mono" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '4px', color: 'var(--gain-color)' }}>
-                ₹{summary.available_cash ? summary.available_cash.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '10,00,000.00'}
+                ₹{effectiveCash.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Simulated virtual funds</span>
             </div>
@@ -617,6 +635,40 @@ export default function PortfolioView({ onSelectStock, onOpenOrder, onResetBalan
               </div>
             </>
           )}
+        </div>
+      )}
+      </div>
+
+      {/* Right Column: AI Portfolio Side Panel */}
+      <div className="section-side-column">
+        <AISidePanel
+          section="portfolio"
+          currentSymbol="PORTFOLIO"
+          onSelectStock={onSelectStock}
+        />
+      </div>
+
+      {/* Mobile Floating Button */}
+      <button
+        onClick={() => setMobileDrawerOpen(true)}
+        className="ai-mobile-floating-btn"
+        title="Open Portfolio AI Agent"
+      >
+        <Sparkles size={16} /> Portfolio AI Agent
+      </button>
+
+      {/* Mobile Drawer Overlay */}
+      {mobileDrawerOpen && (
+        <div className="ai-mobile-drawer-overlay" onClick={() => setMobileDrawerOpen(false)}>
+          <div className="ai-mobile-drawer-content" onClick={(e) => e.stopPropagation()}>
+            <AISidePanel
+              section="portfolio"
+              currentSymbol="PORTFOLIO"
+              isMobile={true}
+              onToggleOpen={() => setMobileDrawerOpen(false)}
+              onSelectStock={onSelectStock}
+            />
+          </div>
         </div>
       )}
     </div>

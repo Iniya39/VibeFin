@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { History, ReceiptText, Wallet } from 'lucide-react';
 
-export default function TransactionsView({ onSelectStock }) {
+export default function TransactionsView({ onSelectStock, virtualBalance }) {
   const [activeTab, setActiveTab] = useState('trades'); // 'trades' | 'ledger'
   const [trades, setTrades] = useState([]);
   const [ledger, setLedger] = useState([]);
@@ -22,7 +22,7 @@ export default function TransactionsView({ onSelectStock }) {
         console.error('Error loading transactions:', err);
         setLoading(false);
       });
-  }, []);
+  }, [virtualBalance]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}>
